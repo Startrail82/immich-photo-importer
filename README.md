@@ -3,8 +3,8 @@
 Haalt foto's en video's van iCloud (en uit een Inbox-map), sorteert ze op datum naar de
 Immich-bibliotheek op de NAS en geeft je iPhone-favorieten door als favoriet in Immich.
 
-Status: **stap 1 t/m 4 klaar** (kern, Immich, iCloud + planner, webinterface). Nog te bouwen:
-Docker-stack.
+Status: **alle stappen klaar** (kern, Immich, iCloud + planner, webinterface, Docker-stack).
+Installatie: zie [deploy/DEPLOY.md](deploy/DEPLOY.md).
 
 ## Wat de kern doet
 

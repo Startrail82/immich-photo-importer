@@ -1,0 +1,36 @@
+# Stack voor Dockhand op utility-gpu: /opt/stacks/immichphotoimporter/
+#   docker-compose.yml  (dit bestand)
+#   .env                (kopie van .env.example, chmod 600)
+#   app/                (git clone van de repo; hier wordt de image uit gebouwd)
+services:
+  immichphotoimporter:
+    build:
+      context: ./app
+    image: immichphotoimporter:local
+    container_name: immichphotoimporter
+    restart: unless-stopped
+    # Zelfde eigenaar als de mappen op de NAS (1024:users), zodat nieuwe bestanden niet van root zijn.
+    user: "${PUID:-1024}:${PGID:-100}"
+    environment:
+      TZ: Europe/Brussels
+      PI_SCHEDULE_TIME: "12:00"
+      # iCloud
+      PI_ICLOUD_USERNAME: ${ICLOUD_USERNAME}
+      PI_ICLOUD_PASSWORD: ${ICLOUD_PASSWORD}
+      PI_ICLOUD_FAVORITES_ALBUM: ${ICLOUD_FAVORITES_ALBUM:-Favorites}
+      PI_ICLOUD_WEB_URL: ${ICLOUD_WEB_URL}
+      # Immich (het pad is dat van Immich zelf)
+      PI_IMMICH_URL: ${IMMICH_URL}
+      PI_IMMICH_API_KEY: ${IMMICH_API_KEY}
+      PI_IMMICH_TARGET_PATH: /mnt/nfs/nas1/photo/Ongesorteerd
+    volumes:
+      - pi_data:/data
+      - /mnt/nfs/nas1/photo/Import:/import
+      - /mnt/nfs/nas1/photo/Ongesorteerd:/target
+    ports:
+      # Alleen op het LAN-adres van deze VM; Traefik (op utility) bereikt ze via 192.168.100.81.
+      - "192.168.100.81:8420:8000"   # webinterface
+      - "192.168.100.81:8421:8080"   # icloudpd-codepagina
+
+volumes:
+  pi_data:
