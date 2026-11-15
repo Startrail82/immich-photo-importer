@@ -19,17 +19,14 @@ mkdir -p /mnt/nfs/nas1/photo/Import/iCloud/favorieten /mnt/nfs/nas1/photo/Import
 Losse bestanden die nu rechtstreeks in `Import/iCloud` staan, worden niet verwerkt. Verplaats ze
 naar `Import/Inbox`.
 
-## 2. Stack aanmaken
+## 2. Stack aanmaken (vanuit Git in Dockhand)
 
-Maak in Dockhand een stack `immichphotoimporter` op utility-gpu met de inhoud van
-`deploy/docker-compose.yml`. Haal daarna de code en het `.env`-bestand op de VM:
+Voeg in Dockhand de repo `https://github.com/Startrail82/immich-photo-importer` toe als Git-bron
+(is de repo privé, geef dan een token of deploy key mee). Maak daarna op utility-gpu een stack
+`immichphotoimporter` vanuit die repo, met compose-pad `docker-compose.yml` (in de root van de repo).
 
-```bash
-cd /opt/stacks/immichphotoimporter && git clone https://github.com/Startrail82/immich-photo-importer.git app && cp app/deploy/.env.example .env && chmod 600 .env
-```
-
-Is de repo privé, log dan eerst in met `gh auth login` of gebruik een deploy key. Vul daarna
-`.env` in (Apple-ID, wachtwoord, Immich-sleutel). Controleer ook dat de poorten vrij zijn:
+Zet de variabelen uit `deploy/.env.example` in Dockhand (het wachtwoord en de Immich-sleutel als
+secret). Controleer ook dat de poorten vrij zijn:
 
 ```bash
 ss -ltn | grep -E ':(8420|8421)\b' || echo "poorten vrij"
@@ -86,11 +83,8 @@ Wordt de download afgebroken, dan gaat de volgende run verder.
 
 ## Update
 
-```bash
-cd /opt/stacks/immichphotoimporter/app && git pull
-```
-
-Bouw de stack daarna opnieuw in Dockhand (Rebuild / Redeploy).
+Haal in Dockhand de nieuwste versie van de Git-bron op en deploy de stack opnieuw met een rebuild
+van de image.
 
 ## Bewaren
 

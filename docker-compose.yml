@@ -1,11 +1,9 @@
-# Stack voor Dockhand op utility-gpu: /opt/stacks/immichphotoimporter/
-#   docker-compose.yml  (dit bestand)
-#   .env                (kopie van .env.example, chmod 600)
-#   app/                (git clone van de repo; hier wordt de image uit gebouwd)
+# Stack voor Dockhand op utility-gpu, aangemaakt vanuit deze Git-repo (compose-pad: docker-compose.yml).
+# De image wordt op de VM gebouwd uit deze repo. Variabelen (zie deploy/.env.example) zet je in Dockhand.
 services:
   immichphotoimporter:
     build:
-      context: ./app
+      context: .
     image: immichphotoimporter:local
     container_name: immichphotoimporter
     restart: unless-stopped
