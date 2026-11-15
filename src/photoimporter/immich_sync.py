@@ -11,7 +11,7 @@ from .immich import ImmichClient, ImmichError
 from .runlog import RunLog
 from .store import Store
 
-STEP = "5/5 Immich"
+STEP = "6/6 Immich"
 
 
 def to_immich_path(cfg: Config, host_path: Path) -> str:

@@ -4,12 +4,17 @@ from __future__ import annotations
 
 import argparse
 import logging
+import signal
 import sys
+import threading
 
 from . import __version__
 from .config import Config, ConfigError
 from .immich import ImmichClient, ImmichError
+from .icloud import check_icloud
 from .organizer import RunAlreadyActive, run_import
+from .runlog import ConsoleLog
+from .scheduler import Scheduler
 from .store import Store
 
 
@@ -70,6 +75,23 @@ def immich_check(cfg: Config) -> int:
     return 0
 
 
+def daemon(cfg: Config) -> int:
+    log = logging.getLogger("photoimporter")
+    store = Store(cfg.data_dir / "photoimporter.db")
+    scheduler = Scheduler(cfg, store)
+    scheduler.start()
+    nxt = scheduler.next_run
+    log.info("planner gestart; volgende run: %s", nxt.strftime("%Y-%m-%d %H:%M") if nxt else "uitgeschakeld")
+    stop = threading.Event()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        signal.signal(sig, lambda *_: stop.set())
+    stop.wait()
+    log.info("planner stopt")
+    scheduler.stop()
+    store.close()
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="photoimporter")
     parser.add_argument("--version", action="version", version=__version__)
@@ -81,6 +103,8 @@ def main(argv: list[str] | None = None) -> int:
         help="alleen tonen wat er zou gebeuren, niets wijzigen",
     )
     sub.add_parser("immich-check", help="de verbinding met Immich en de API-sleutel controleren")
+    sub.add_parser("icloud-check", help="inloggen bij iCloud (incl. tweestapscode) en het favorietenalbum zoeken")
+    sub.add_parser("daemon", help="planner starten: dagelijks automatisch uitvoeren")
     args = parser.parse_args(argv)
 
     _setup_logging()
@@ -93,6 +117,10 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "immich-check":
         return immich_check(cfg)
+    if args.command == "icloud-check":
+        return check_icloud(cfg, ConsoleLog())
+    if args.command == "daemon":
+        return daemon(cfg)
 
     if args.dry_run:
         cfg = cfg.with_dry_run(True)

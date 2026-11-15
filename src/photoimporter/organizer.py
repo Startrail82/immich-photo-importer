@@ -14,6 +14,7 @@ from datetime import datetime
 from pathlib import Path
 
 from .config import Config
+from .icloud import download_icloud
 from .immich_sync import sync_immich
 from .media import classify
 from .metadata import file_date, read_exif_dates
@@ -28,6 +29,7 @@ class RunAlreadyActive(RuntimeError):
 
 @dataclass
 class RunStats:
+    downloaded: int = 0
     scanned: int = 0
     moved: int = 0
     duplicates_removed: int = 0
@@ -173,7 +175,7 @@ def collect_items(
         (cfg.source_other, False, "overig", cfg.min_age_icloud),
         (cfg.source_inbox, False, "inbox", cfg.min_age_inbox),
     ]
-    step = "1/5 scannen"
+    step = "2/6 scannen"
     items: list[Item] = []
     now = time.time()
     for root, favorite, name, min_age in sources:
@@ -208,7 +210,7 @@ def collect_items(
 
 
 def plan_dates(items: list[Item], cfg: Config, log: RunLog) -> list[PlannedItem]:
-    step = "2/5 datums bepalen"
+    step = "3/6 datums bepalen"
     log.info(step, f"EXIF-datums lezen voor {len(items)} bestand(en)")
     exif = read_exif_dates([i.path for i in items])
 
@@ -307,6 +309,9 @@ def _run(cfg: Config, store: Store, run_id: int, log: RunLog, stats: RunStats) -
         # Bewust geen mkdir: als de NAS niet gemount is, mag er geen lokale kopie ontstaan.
         raise RuntimeError(f"doelmap bestaat niet of is niet bereikbaar: {cfg.target}")
 
+    # Eerst iCloud binnenhalen. Mislukt dat, dan sorteren we gewoon wat er al staat (ook de inbox).
+    download_icloud(cfg, store, log, stats)
+
     items = collect_items(cfg, store, run_id, log, stats)
     if items:
         plan = plan_dates(items, cfg, log)
@@ -320,7 +325,7 @@ def _run(cfg: Config, store: Store, run_id: int, log: RunLog, stats: RunStats) -
 
 
 def _process_all(plan, cfg, store, run_id, log, stats) -> None:
-    step = "3/5 verwerken"
+    step = "4/6 verwerken"
     reserved: dict[Path, Path] = {}
     total = len(plan)
     for index, planned in enumerate(plan, start=1):
@@ -335,7 +340,7 @@ def _process_all(plan, cfg, store, run_id, log, stats) -> None:
 
 
 def _cleanup(cfg, log) -> None:
-    step = "4/5 opruimen"
+    step = "5/6 opruimen"
     if cfg.dry_run:
         return
     removed = sum(
@@ -369,7 +374,7 @@ def run_import(cfg: Config, store: Store, trigger: str = "handmatig") -> RunResu
                     log.info("opruimen", f"oude logregels opgeruimd: {pruned}")
             log.info(
                 "klaar",
-                f"status: {status}; {stats.moved} verplaatst, {stats.duplicates_removed} duplicaten verwijderd, "
+                f"status: {status}; {stats.downloaded} uit iCloud gedownload, {stats.moved} verplaatst, {stats.duplicates_removed} duplicaten verwijderd, "
                 f"{stats.renamed} hernoemd, {stats.skipped} overgeslagen, {stats.unknown} onbekend, "
                 f"{stats.date_fallbacks} met bestandsdatum, {stats.sidecars} sidecars, "
                 f"{stats.favorites_set} favorieten in Immich gemarkeerd ({stats.favorites_waiting} wachtend), "

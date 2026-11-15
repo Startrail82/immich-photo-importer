@@ -62,6 +62,29 @@ class Config:
     immich_wait_seconds: int = 600  # hoe lang wachten tot Immich nieuwe bestanden kent
     immich_poll_seconds: int = 15
 
+    # iCloud-download via icloudpd (optioneel). Actief als gebruikersnaam en wachtwoord ingesteld zijn.
+    icloud_username: str = ""
+    icloud_password: str = ""
+    icloud_command: str = "icloudpd"  # mag extra woorden bevatten, bv. "python /pad/fake.py"
+    icloud_cookie_dir: Path | None = None  # leeg = <data_dir>/icloud-cookies
+    icloud_favorites_album: str = "Favorites"
+    icloud_auth_wait_seconds: int = 1800  # hoe lang wachten op een tweestapscode
+    icloud_download_timeout: int = 14400  # maximale duur van een download
+    icloud_extra_args: str = ""
+    icloud_web_port: int = 8080  # poort van de icloudpd-webpagina voor de tweestapscode
+
+    # Planner: dagelijks op dit uur (lokale tijd van de container, stel TZ in)
+    schedule_time: str = "12:00"
+    schedule_enabled: bool = True
+
+    @property
+    def icloud_enabled(self) -> bool:
+        return bool(self.icloud_username and self.icloud_password)
+
+    @property
+    def cookie_dir(self) -> Path:
+        return self.icloud_cookie_dir or (self.data_dir / "icloud-cookies")
+
     @property
     def immich_enabled(self) -> bool:
         return bool(self.immich_url and self.immich_api_key and self.immich_target_path)
@@ -84,6 +107,19 @@ class Config:
             immich_library_id=os.environ.get("PI_IMMICH_LIBRARY_ID", "").strip(),
             immich_wait_seconds=_env_int("PI_IMMICH_WAIT_SECONDS", 600),
             immich_poll_seconds=_env_int("PI_IMMICH_POLL_SECONDS", 15),
+            icloud_username=os.environ.get("PI_ICLOUD_USERNAME", "").strip(),
+            icloud_password=_read_secret("PI_ICLOUD_PASSWORD"),
+            icloud_command=os.environ.get("PI_ICLOUD_COMMAND", "icloudpd").strip() or "icloudpd",
+            icloud_cookie_dir=Path(os.environ["PI_ICLOUD_COOKIE_DIR"])
+            if os.environ.get("PI_ICLOUD_COOKIE_DIR", "").strip()
+            else None,
+            icloud_favorites_album=os.environ.get("PI_ICLOUD_FAVORITES_ALBUM", "Favorites").strip() or "Favorites",
+            icloud_auth_wait_seconds=_env_int("PI_ICLOUD_AUTH_WAIT_SECONDS", 1800),
+            icloud_download_timeout=_env_int("PI_ICLOUD_DOWNLOAD_TIMEOUT_SECONDS", 14400),
+            icloud_extra_args=os.environ.get("PI_ICLOUD_EXTRA_ARGS", "").strip(),
+            icloud_web_port=_env_int("PI_ICLOUD_WEB_PORT", 8080),
+            schedule_time=os.environ.get("PI_SCHEDULE_TIME", "12:00").strip() or "12:00",
+            schedule_enabled=_env_bool("PI_SCHEDULE_ENABLED", True),
         )
         cfg.validate()
         return cfg
@@ -99,6 +135,12 @@ class Config:
             "inbox": self.source_inbox,
             "doelmap": self.target,
         }
+        try:
+            hour, minute = self.schedule_time.split(":")
+            if not (0 <= int(hour) <= 23 and 0 <= int(minute) <= 59):
+                raise ValueError
+        except ValueError:
+            raise ConfigError(f"PI_SCHEDULE_TIME moet UU:MM zijn, kreeg: {self.schedule_time!r}") from None
         names = list(named)
         for i, a in enumerate(names):
             for b in names[i + 1 :]:

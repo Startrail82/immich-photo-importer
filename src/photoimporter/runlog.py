@@ -33,3 +33,16 @@ class RunLog:
 
     def error(self, step: str, message: str, path: Path | str | None = None) -> None:
         self._emit(logging.ERROR, step, message, path)
+
+
+class ConsoleLog:
+    """Zelfde interface als RunLog, maar alleen naar de console (voor losse controle-commando's)."""
+
+    def info(self, step: str, message: str, path: Path | str | None = None) -> None:
+        _logger.info("[%s] %s", step, message)
+
+    def warn(self, step: str, message: str, path: Path | str | None = None) -> None:
+        _logger.warning("[%s] %s", step, message)
+
+    def error(self, step: str, message: str, path: Path | str | None = None) -> None:
+        _logger.error("[%s] %s", step, message)

@@ -44,6 +44,11 @@ CREATE TABLE IF NOT EXISTS pending_favorites (
     done INTEGER NOT NULL DEFAULT 0,
     done_ts TEXT
 );
+CREATE TABLE IF NOT EXISTS state (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    ts TEXT NOT NULL
+);
 """
 
 _FMT = "%Y-%m-%d %H:%M:%S"
@@ -163,6 +168,20 @@ class Store:
                 "UPDATE pending_favorites SET done = 1, done_ts = ? WHERE path = ?",
                 (_now(), path),
             )
+
+    # --- losse toestandswaarden (bv. iCloud wacht op een code) ----------
+    def set_state(self, key: str, value: str) -> None:
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO state(key, value, ts) VALUES(?, ?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value, ts = excluded.ts",
+                (key, value, _now()),
+            )
+
+    def get_state(self, key: str, default: str = "") -> str:
+        with self._lock:
+            row = self._conn.execute("SELECT value FROM state WHERE key = ?", (key,)).fetchone()
+        return row["value"] if row else default
 
     # --- opruimen -------------------------------------------------------
     def prune(self, retention_days: int) -> dict[str, int]:
