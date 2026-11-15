@@ -8,6 +8,7 @@ import sys
 
 from . import __version__
 from .config import Config, ConfigError
+from .immich import ImmichClient, ImmichError
 from .organizer import RunAlreadyActive, run_import
 from .store import Store
 
@@ -21,6 +22,54 @@ def _setup_logging() -> None:
     )
 
 
+def immich_check(cfg: Config) -> int:
+    """Controleert stap voor stap of de Immich-koppeling klaar is voor gebruik."""
+    log = logging.getLogger("photoimporter")
+    missing = [
+        name
+        for name, value in (
+            ("PI_IMMICH_URL", cfg.immich_url),
+            ("PI_IMMICH_API_KEY", cfg.immich_api_key),
+            ("PI_IMMICH_TARGET_PATH", cfg.immich_target_path),
+        )
+        if not value
+    ]
+    if missing:
+        log.error("[immich-check] niet ingesteld: %s", ", ".join(missing))
+        return 2
+
+    client = ImmichClient(cfg.immich_url, cfg.immich_api_key)
+    try:
+        log.info("[immich-check 1/3] server bereikbaar? %s", cfg.immich_url)
+        if not client.ping():
+            log.error("[immich-check 1/3] onverwacht antwoord op /server/ping")
+            return 1
+        log.info("[immich-check 1/3] ok")
+
+        log.info("[immich-check 2/3] bibliotheken lezen (recht: library.read)")
+        libraries = client.list_libraries()
+        log.info("[immich-check 2/3] ok, %d bibliotheek/bibliotheken gevonden", len(libraries))
+
+        log.info("[immich-check 3/3] bibliotheek met importpad %s zoeken", cfg.immich_target_path)
+        library_id = cfg.immich_library_id or client.find_library_id(cfg.immich_target_path)
+        if library_id is None:
+            log.error("[immich-check 3/3] geen bibliotheek met dit importpad gevonden")
+            return 1
+        log.info("[immich-check 3/3] ok, bibliotheek %s", library_id)
+
+        log.info("[immich-check] zoeken op pad testen (recht: asset.read)")
+        client.find_asset_id(cfg.immich_target_path + "/bestaat-niet.jpg")
+        log.info("[immich-check] ok")
+    except ImmichError as exc:
+        log.error("[immich-check] mislukt: %s", exc)
+        return 1
+    log.info(
+        "[immich-check] alles gelukt. Voor het markeren van favorieten en het starten van scans "
+        "heeft de sleutel ook asset.update en library.update nodig; die test ik hier bewust niet."
+    )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="photoimporter")
     parser.add_argument("--version", action="version", version=__version__)
@@ -31,6 +80,7 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="alleen tonen wat er zou gebeuren, niets wijzigen",
     )
+    sub.add_parser("immich-check", help="de verbinding met Immich en de API-sleutel controleren")
     args = parser.parse_args(argv)
 
     _setup_logging()
@@ -40,6 +90,10 @@ def main(argv: list[str] | None = None) -> int:
     except ConfigError as exc:
         log.error("configuratiefout: %s", exc)
         return 2
+
+    if args.command == "immich-check":
+        return immich_check(cfg)
+
     if args.dry_run:
         cfg = cfg.with_dry_run(True)
 

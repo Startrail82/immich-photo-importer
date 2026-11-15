@@ -14,6 +14,7 @@ from datetime import datetime
 from pathlib import Path
 
 from .config import Config
+from .immich_sync import sync_immich
 from .media import classify
 from .metadata import file_date, read_exif_dates
 from .runlog import RunLog
@@ -35,6 +36,8 @@ class RunStats:
     unknown: int = 0
     date_fallbacks: int = 0
     sidecars: int = 0
+    favorites_set: int = 0
+    favorites_waiting: int = 0
     errors: int = 0
 
     def as_json(self) -> str:
@@ -170,7 +173,7 @@ def collect_items(
         (cfg.source_other, False, "overig", cfg.min_age_icloud),
         (cfg.source_inbox, False, "inbox", cfg.min_age_inbox),
     ]
-    step = "1/4 scannen"
+    step = "1/5 scannen"
     items: list[Item] = []
     now = time.time()
     for root, favorite, name, min_age in sources:
@@ -205,7 +208,7 @@ def collect_items(
 
 
 def plan_dates(items: list[Item], cfg: Config, log: RunLog) -> list[PlannedItem]:
-    step = "2/4 datums bepalen"
+    step = "2/5 datums bepalen"
     log.info(step, f"EXIF-datums lezen voor {len(items)} bestand(en)")
     exif = read_exif_dates([i.path for i in items])
 
@@ -305,13 +308,19 @@ def _run(cfg: Config, store: Store, run_id: int, log: RunLog, stats: RunStats) -
         raise RuntimeError(f"doelmap bestaat niet of is niet bereikbaar: {cfg.target}")
 
     items = collect_items(cfg, store, run_id, log, stats)
-    if not items:
-        log.info("klaar", "niets te verwerken")
-        return
+    if items:
+        plan = plan_dates(items, cfg, log)
+        _process_all(plan, cfg, store, run_id, log, stats)
+        _cleanup(cfg, log)
+    else:
+        log.info("klaar", "geen nieuwe bestanden om te sorteren")
 
-    plan = plan_dates(items, cfg, log)
+    # Ook zonder nieuwe bestanden: favorieten van eerdere runs kunnen nog in de wachtrij staan.
+    sync_immich(cfg, store, log, stats, moved_any=stats.moved > 0)
 
-    step = "3/4 verwerken"
+
+def _process_all(plan, cfg, store, run_id, log, stats) -> None:
+    step = "3/5 verwerken"
     reserved: dict[Path, Path] = {}
     total = len(plan)
     for index, planned in enumerate(plan, start=1):
@@ -324,15 +333,18 @@ def _run(cfg: Config, store: Store, run_id: int, log: RunLog, stats: RunStats) -
             if not cfg.dry_run:
                 store.add_review(run_id, "error", str(planned.item.path), repr(exc))
 
-    step = "4/4 opruimen"
-    if not cfg.dry_run:
-        removed = sum(
-            remove_empty_dirs(root)
-            for root in (cfg.source_favorites, cfg.source_other, cfg.source_inbox)
-            if root.is_dir()
-        )
-        if removed:
-            log.info(step, f"{removed} lege submap(pen) opgeruimd")
+
+def _cleanup(cfg, log) -> None:
+    step = "4/5 opruimen"
+    if cfg.dry_run:
+        return
+    removed = sum(
+        remove_empty_dirs(root)
+        for root in (cfg.source_favorites, cfg.source_other, cfg.source_inbox)
+        if root.is_dir()
+    )
+    if removed:
+        log.info(step, f"{removed} lege submap(pen) opgeruimd")
 
 
 def run_import(cfg: Config, store: Store, trigger: str = "handmatig") -> RunResult:
@@ -359,7 +371,9 @@ def run_import(cfg: Config, store: Store, trigger: str = "handmatig") -> RunResu
                 "klaar",
                 f"status: {status}; {stats.moved} verplaatst, {stats.duplicates_removed} duplicaten verwijderd, "
                 f"{stats.renamed} hernoemd, {stats.skipped} overgeslagen, {stats.unknown} onbekend, "
-                f"{stats.date_fallbacks} met bestandsdatum, {stats.sidecars} sidecars, {stats.errors} fouten",
+                f"{stats.date_fallbacks} met bestandsdatum, {stats.sidecars} sidecars, "
+                f"{stats.favorites_set} favorieten in Immich gemarkeerd ({stats.favorites_waiting} wachtend), "
+                f"{stats.errors} fouten",
             )
             store.finish_run(run_id, status, stats.as_json())
         return RunResult(run_id, status, stats)

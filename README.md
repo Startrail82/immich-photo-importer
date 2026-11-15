@@ -3,8 +3,8 @@
 Haalt foto's en video's van iCloud (en uit een Inbox-map), sorteert ze op datum naar de
 Immich-bibliotheek op de NAS en geeft je iPhone-favorieten door als favoriet in Immich.
 
-Status: **stap 1 (kern) klaar**. Nog te bouwen: iCloud-download (icloudpd), Immich-koppeling,
-webinterface, Docker-stack.
+Status: **stap 1 (kern) en stap 2 (Immich-koppeling) klaar**. Nog te bouwen: iCloud-download
+(icloudpd), webinterface, Docker-stack.
 
 ## Wat de kern doet
 
@@ -17,6 +17,12 @@ webinterface, Docker-stack.
 5. Favorieten krijgen een sidecar `<bestand>.xmp` met `xmp:Rating="5"` en komen in de lijst
    van favorieten die nog in Immich gemarkeerd moeten worden.
 6. Onbekende bestandstypes blijven staan en komen onder "aandacht nodig".
+
+7. Immich (optioneel, stap 5 van de run): start een scan van de externe bibliotheek, wacht tot
+   Immich de nieuwe favorieten kent (zoeken op bestandspad) en zet ze via de API op favoriet.
+   Favorieten die Immich nog niet kent blijven in de wachtrij voor de volgende run. Een foto
+   die al eens als favoriet is gemarkeerd, wordt niet opnieuw gemarkeerd. Haal je hem in
+   Immich zelf weer van favoriet, dan blijft dat zo.
 
 Veiligheid: bestaat de doelmap niet (NAS niet gemount), dan stopt de run. Er loopt nooit
 meer dan een run tegelijk. In de Inbox worden te recent gewijzigde bestanden overgeslagen.
@@ -44,6 +50,28 @@ Vereist `exiftool` (Debian/Ubuntu: `apt install libimage-exiftool-perl`).
 | `PI_MIN_AGE_ICLOUD_SECONDS` | `0` | idem voor de iCloud-mappen |
 | `PI_LOG_RETENTION_DAYS` | `180` | logregels ouder dan dit worden opgeruimd |
 | `PI_DRY_RUN` | `false` | alleen tonen, niets wijzigen |
+| `PI_IMMICH_URL` | leeg | bv. `https://immich.bluelight.one` |
+| `PI_IMMICH_API_KEY` of `PI_IMMICH_API_KEY_FILE` | leeg | API-sleutel, of pad naar een bestand met de sleutel (Docker secret) |
+| `PI_IMMICH_TARGET_PATH` | leeg | de doelmap zoals **Immich** hem ziet, bv. `/mnt/nfs/nas1/photo/Ongesorteerd` |
+| `PI_IMMICH_LIBRARY_ID` | leeg | optioneel; standaard wordt de bibliotheek gezocht op importpad |
+| `PI_IMMICH_WAIT_SECONDS` | `600` | hoe lang wachten tot Immich nieuwe bestanden kent |
+| `PI_IMMICH_POLL_SECONDS` | `15` | pauze tussen twee pogingen |
+
+De Immich-koppeling is alleen actief als URL, sleutel en pad alle drie zijn ingesteld.
+
+### API-sleutel
+
+Maak in Immich een sleutel met de rechten `asset.read`, `asset.update`, `library.read` en
+`library.update` (Account Settings > API Keys). Controleer de verbinding met:
+
+```
+photoimporter immich-check
+```
+
+Dat commando test bereikbaarheid, leesrechten en of de bibliotheek gevonden wordt. De
+schrijfrechten (`asset.update`, `library.update`) test het bewust niet, want dat zou iets wijzigen;
+ontbreken ze, dan meldt de eerste echte run een duidelijke fout (HTTP 403) en blijven de
+favorieten in de wachtrij staan.
 
 ## Tests
 

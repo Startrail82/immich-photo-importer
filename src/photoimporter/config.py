@@ -21,6 +21,17 @@ def _env_int(name: str, default: int) -> int:
         raise ConfigError(f"{name} moet een geheel getal zijn, kreeg: {raw!r}") from exc
 
 
+def _read_secret(name: str) -> str:
+    """Leest een geheim uit NAAM, of uit het bestand waar NAAM_FILE naar wijst (Docker secrets)."""
+    file_path = os.environ.get(f"{name}_FILE", "").strip()
+    if file_path:
+        try:
+            return Path(file_path).read_text(encoding="utf-8").strip()
+        except OSError as exc:
+            raise ConfigError(f"{name}_FILE kan niet gelezen worden: {exc}") from exc
+    return os.environ.get(name, "").strip()
+
+
 def _env_bool(name: str, default: bool) -> bool:
     raw = os.environ.get(name)
     if raw is None or raw.strip() == "":
@@ -42,6 +53,18 @@ class Config:
     min_age_icloud: int = 0
     log_retention_days: int = 180
     dry_run: bool = False
+    # Immich-koppeling (optioneel). Pas actief als url, sleutel en pad alle drie zijn ingesteld.
+    immich_url: str = ""
+    immich_api_key: str = ""
+    # Het pad van de doelmap zoals IMMICH het ziet (verschilt van het pad in deze container).
+    immich_target_path: str = ""
+    immich_library_id: str = ""  # leeg = automatisch zoeken op importpad
+    immich_wait_seconds: int = 600  # hoe lang wachten tot Immich nieuwe bestanden kent
+    immich_poll_seconds: int = 15
+
+    @property
+    def immich_enabled(self) -> bool:
+        return bool(self.immich_url and self.immich_api_key and self.immich_target_path)
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -55,6 +78,12 @@ class Config:
             min_age_icloud=_env_int("PI_MIN_AGE_ICLOUD_SECONDS", 0),
             log_retention_days=_env_int("PI_LOG_RETENTION_DAYS", 180),
             dry_run=_env_bool("PI_DRY_RUN", False),
+            immich_url=os.environ.get("PI_IMMICH_URL", "").strip(),
+            immich_api_key=_read_secret("PI_IMMICH_API_KEY"),
+            immich_target_path=os.environ.get("PI_IMMICH_TARGET_PATH", "").strip(),
+            immich_library_id=os.environ.get("PI_IMMICH_LIBRARY_ID", "").strip(),
+            immich_wait_seconds=_env_int("PI_IMMICH_WAIT_SECONDS", 600),
+            immich_poll_seconds=_env_int("PI_IMMICH_POLL_SECONDS", 15),
         )
         cfg.validate()
         return cfg
