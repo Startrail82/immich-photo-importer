@@ -75,11 +75,18 @@ def immich_check(cfg: Config) -> int:
     return 0
 
 
-def daemon(cfg: Config) -> int:
+def daemon(cfg: Config, web: bool = False) -> int:
     log = logging.getLogger("photoimporter")
     store = Store(cfg.data_dir / "photoimporter.db")
     scheduler = Scheduler(cfg, store)
     scheduler.start()
+    app = None
+    if web:
+        from .webapp import WebApp
+
+        app = WebApp(cfg, store, scheduler, port=cfg.web_port)
+        app.start()
+        log.info("webinterface luistert op poort %d", app.port)
     nxt = scheduler.next_run
     log.info("planner gestart; volgende run: %s", nxt.strftime("%Y-%m-%d %H:%M") if nxt else "uitgeschakeld")
     stop = threading.Event()
@@ -87,6 +94,8 @@ def daemon(cfg: Config) -> int:
         signal.signal(sig, lambda *_: stop.set())
     stop.wait()
     log.info("planner stopt")
+    if app:
+        app.stop()
     scheduler.stop()
     store.close()
     return 0
@@ -105,6 +114,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("immich-check", help="de verbinding met Immich en de API-sleutel controleren")
     sub.add_parser("icloud-check", help="inloggen bij iCloud (incl. tweestapscode) en het favorietenalbum zoeken")
     sub.add_parser("daemon", help="planner starten: dagelijks automatisch uitvoeren")
+    sub.add_parser("serve", help="planner en webinterface starten (dit draait in de container)")
     args = parser.parse_args(argv)
 
     _setup_logging()
@@ -121,6 +131,8 @@ def main(argv: list[str] | None = None) -> int:
         return check_icloud(cfg, ConsoleLog())
     if args.command == "daemon":
         return daemon(cfg)
+    if args.command == "serve":
+        return daemon(cfg, web=True)
 
     if args.dry_run:
         cfg = cfg.with_dry_run(True)

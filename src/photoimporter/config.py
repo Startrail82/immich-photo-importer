@@ -72,6 +72,9 @@ class Config:
     icloud_download_timeout: int = 14400  # maximale duur van een download
     icloud_extra_args: str = ""
     icloud_web_port: int = 8080  # poort van de icloudpd-webpagina voor de tweestapscode
+    # Publiek adres van die codepagina (eigen Traefik-route), waarnaar de webinterface linkt
+    icloud_web_url: str = ""
+    web_port: int = 8000
 
     # Planner: dagelijks op dit uur (lokale tijd van de container, stel TZ in)
     schedule_time: str = "12:00"
@@ -118,6 +121,8 @@ class Config:
             icloud_download_timeout=_env_int("PI_ICLOUD_DOWNLOAD_TIMEOUT_SECONDS", 14400),
             icloud_extra_args=os.environ.get("PI_ICLOUD_EXTRA_ARGS", "").strip(),
             icloud_web_port=_env_int("PI_ICLOUD_WEB_PORT", 8080),
+            icloud_web_url=os.environ.get("PI_ICLOUD_WEB_URL", "").strip(),
+            web_port=_env_int("PI_WEB_PORT", 8000),
             schedule_time=os.environ.get("PI_SCHEDULE_TIME", "12:00").strip() or "12:00",
             schedule_enabled=_env_bool("PI_SCHEDULE_ENABLED", True),
         )

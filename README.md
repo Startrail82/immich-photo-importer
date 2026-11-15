@@ -3,8 +3,8 @@
 Haalt foto's en video's van iCloud (en uit een Inbox-map), sorteert ze op datum naar de
 Immich-bibliotheek op de NAS en geeft je iPhone-favorieten door als favoriet in Immich.
 
-Status: **stap 1 (kern), stap 2 (Immich) en stap 3 (iCloud + planner) klaar**. Nog te bouwen:
-webinterface, Docker-stack.
+Status: **stap 1 t/m 4 klaar** (kern, Immich, iCloud + planner, webinterface). Nog te bouwen:
+Docker-stack.
 
 ## Wat de kern doet
 
@@ -64,6 +64,8 @@ Vereist `exiftool` (Debian/Ubuntu: `apt install libimage-exiftool-perl`).
 | `PI_ICLOUD_DOWNLOAD_TIMEOUT_SECONDS` | `14400` | maximale duur per download |
 | `PI_ICLOUD_WEB_PORT` | `8080` | poort waarop icloudpd de codepagina aanbiedt |
 | `PI_ICLOUD_COMMAND` / `PI_ICLOUD_EXTRA_ARGS` | `icloudpd` / leeg | uitvoerbaar bestand en extra opties |
+| `PI_WEB_PORT` | `8000` | poort van de webinterface |
+| `PI_ICLOUD_WEB_URL` | leeg | publiek adres van de icloudpd-codepagina; de knop 'Code invoeren' linkt hiernaar |
 | `PI_SCHEDULE_TIME` / `PI_SCHEDULE_ENABLED` | `12:00` / `true` | dagelijkse starttijd (lokale tijd, stel `TZ` in) |
 | `PI_IMMICH_URL` | leeg | bv. `https://immich.bluelight.one` |
 | `PI_IMMICH_API_KEY` of `PI_IMMICH_API_KEY_FILE` | leeg | API-sleutel, of pad naar een bestand met de sleutel (Docker secret) |
@@ -112,5 +114,20 @@ code ingevoerd wordt en meldt dat in het log en in de status (`icloud_status`).
 photoimporter daemon
 ```
 
-Draait elke dag op `PI_SCHEDULE_TIME` een volledige run. De webinterface (volgende stap) gebruikt
-dezelfde planner voor de knop 'nu uitvoeren'.
+Draait elke dag op `PI_SCHEDULE_TIME` een volledige run, zonder webinterface.
+
+## Webinterface
+
+```
+photoimporter serve
+```
+
+Start de planner en de webinterface (poort `PI_WEB_PORT`, standaard 8000). Het is een kleine
+pagina in de stijl van Immich met: status, tellers van de laatste run, de lijst 'aandacht nodig'
+(bestandsdatum gebruikt, hernoemd, onbekend type, fouten), het live log van elke run, eerdere
+runs en de knop 'Nu uitvoeren'. Er is bewust geen eigen login; zet de pagina achter Traefik en
+Authentik. Verzoeken die iets wijzigen worden geweigerd als hun `Origin` niet bij de host past.
+
+De tweestapscode voer je in op de eigen pagina van icloudpd (poort 8080 in de container). Geef
+die een eigen Traefik-route achter Authentik en vul het adres in bij `PI_ICLOUD_WEB_URL`; de
+webinterface toont dan een melding met een knop zodra een run op de code wacht.

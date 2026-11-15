@@ -18,5 +18,8 @@ photoimporter = "photoimporter.cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+photoimporter = ["web/*.html"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

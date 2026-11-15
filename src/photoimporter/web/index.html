@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Photo Importer</title>
+<style>
+  :root {
+    --primary: #4250af; --primary-hover: #3a479b; --on-primary: #fff;
+    --bg: #fafafa; --card: #fff; --border: #e5e7eb; --text: #1f2937; --muted: #6b7280;
+    --ok: #16a34a; --warn: #d97706; --err: #dc2626; --chip: #eef0fb; --log-bg: #f3f4f6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --primary: #adcbfa; --primary-hover: #c4dafc; --on-primary: #0a0a0a;
+      --bg: #0a0a0a; --card: #151515; --border: #2a2a2a; --text: #e5e7eb; --muted: #9ca3af;
+      --ok: #4ade80; --warn: #fbbf24; --err: #f87171; --chip: #1e2433; --log-bg: #0f0f0f;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.5 "Inter", -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { display: flex; align-items: center; gap: 12px; padding: 14px 24px;
+    background: var(--card); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 2; }
+  .logo { width: 34px; height: 34px; border-radius: 10px; background: var(--primary); color: var(--on-primary);
+    display: grid; place-items: center; font-weight: 700; }
+  header h1 { font-size: 18px; margin: 0; font-weight: 600; flex: 1; }
+  header .ver { color: var(--muted); font-size: 12px; }
+  main { max-width: 1100px; margin: 0 auto; padding: 24px; display: grid; gap: 20px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 18px; padding: 20px; }
+  .card h2 { margin: 0 0 14px; font-size: 16px; font-weight: 600; }
+  .top { display: flex; flex-wrap: wrap; gap: 18px; align-items: center; justify-content: space-between; }
+  .pill { display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 999px;
+    background: var(--chip); font-weight: 600; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); }
+  .dot.ok { background: var(--ok); } .dot.busy { background: var(--primary); animation: pulse 1.2s infinite; }
+  .dot.warn { background: var(--warn); } .dot.err { background: var(--err); }
+  @keyframes pulse { 50% { opacity: .3; } }
+  .meta { color: var(--muted); font-size: 13px; margin-top: 6px; }
+  button, .btn { appearance: none; border: 0; border-radius: 999px; padding: 10px 20px; font: inherit; font-weight: 600;
+    background: var(--primary); color: var(--on-primary); cursor: pointer; text-decoration: none; display: inline-block; }
+  button:hover, .btn:hover { background: var(--primary-hover); }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  button.ghost { background: transparent; color: var(--primary); border: 1px solid var(--border); padding: 6px 14px; }
+  .banner { border-radius: 14px; padding: 14px 18px; background: color-mix(in srgb, var(--warn) 15%, var(--card));
+    border: 1px solid var(--warn); display: none; gap: 14px; align-items: center; justify-content: space-between; }
+  .counters { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+  .counter { background: var(--chip); border-radius: 14px; padding: 14px; }
+  .counter b { display: block; font-size: 26px; line-height: 1.1; }
+  .counter span { color: var(--muted); font-size: 13px; }
+  .counter.bad b { color: var(--err); }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { text-align: left; color: var(--muted); font-weight: 500; padding: 6px 8px; }
+  td { padding: 8px; border-top: 1px solid var(--border); vertical-align: top; }
+  td.path { word-break: break-all; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12.5px; }
+  .tag { padding: 2px 10px; border-radius: 999px; background: var(--chip); font-size: 12px; white-space: nowrap; }
+  #log { background: var(--log-bg); border-radius: 12px; padding: 12px; height: 340px; overflow: auto;
+    font: 12.5px/1.55 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; word-break: break-word; }
+  #log .WARNING { color: var(--warn); } #log .ERROR { color: var(--err); font-weight: 600; }
+  #log .step { color: var(--muted); }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+  select { font: inherit; padding: 6px 10px; border-radius: 10px; border: 1px solid var(--border);
+    background: var(--card); color: var(--text); }
+  .empty { color: var(--muted); padding: 8px 0; }
+  tr.run { cursor: pointer; } tr.run:hover td { background: var(--chip); }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">PI</div>
+  <h1>Photo Importer</h1>
+  <span class="ver" id="ver"></span>
+</header>
+<main>
+  <div class="banner" id="mfa">
+    <div><b>iCloud wacht op een tweestapscode.</b><br>Voer de code in op de pagina van iCloud; daarna loopt de run verder.</div>
+    <a class="btn" id="mfaLink" target="_blank" rel="noopener">Code invoeren</a>
+  </div>
+
+  <section class="card">
+    <div class="top">
+      <div>
+        <div class="pill"><span class="dot" id="dot"></span><span id="state">Laden...</span></div>
+        <div class="meta" id="meta"></div>
+      </div>
+      <button id="runBtn">Nu uitvoeren</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Laatste run <span class="meta" id="lastWhen"></span></h2>
+    <div class="counters" id="counters"></div>
+  </section>
+
+  <section class="card">
+    <h2>Aandacht nodig <span class="meta" id="reviewCount"></span></h2>
+    <div id="review"></div>
+  </section>
+
+  <section class="card">
+    <h2>Log</h2>
+    <div class="row">
+      <select id="runSelect"></select>
+      <span class="meta" id="follow"></span>
+    </div>
+    <div id="log"></div>
+  </section>
+
+  <section class="card">
+    <h2>Eerdere runs</h2>
+    <div id="runs"></div>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const KINDS = { date_fallback: "Bestandsdatum gebruikt", renamed: "Hernoemd", unknown_type: "Onbekend type", error: "Fout" };
+const COUNTERS = [
+  ["downloaded", "Uit iCloud"], ["moved", "Verplaatst"], ["duplicates_removed", "Duplicaten weg"],
+  ["renamed", "Hernoemd"], ["sidecars", "Favorieten gemarkeerd (xmp)"], ["favorites_set", "Favoriet in Immich"],
+  ["favorites_waiting", "Wachten op Immich"], ["date_fallbacks", "Bestandsdatum"], ["unknown", "Onbekend type"],
+  ["skipped", "Overgeslagen"], ["errors", "Fouten"],
+];
+let status = null, selectedRun = null, lastEventId = 0, userPicked = false;
+
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  return { ok: r.ok, status: r.status, data: await r.json() };
+}
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+const fmt = (s) => s || "";
+
+function renderStatus(s) {
+  status = s;
+  $("ver").textContent = "v" + s.version;
+  const last = s.last_run;
+  let dot = "ok", text = "Klaar";
+  if (s.running) { dot = "busy"; text = "Bezig met een run"; }
+  else if (s.icloud_status === "wacht_op_code") { dot = "warn"; text = "Wacht op tweestapscode"; }
+  else if (last && last.status !== "ok") { dot = "err"; text = last.status === "mislukt" ? "Laatste run mislukt" : "Laatste run met fouten"; }
+  $("dot").className = "dot " + dot; $("state").textContent = text;
+  const bits = [];
+  bits.push(s.next_run ? "Volgende run: " + fmt(s.next_run) : "Planner uitgeschakeld");
+  bits.push("iCloud: " + (!s.icloud_configured ? "niet ingesteld" : ({ ok: "in orde", fout: "laatste poging mislukt", wacht_op_code: "wacht op code", uit: "uit", onbekend: "nog niet gebruikt" })[s.icloud_status] || s.icloud_status));
+  bits.push("Immich: " + (s.immich_configured ? "gekoppeld" : "niet ingesteld"));
+  if (s.pending_favorites) bits.push(s.pending_favorites + " favoriet(en) in wachtrij");
+  $("meta").textContent = bits.join("  ·  ");
+  $("runBtn").disabled = s.running;
+  $("runBtn").textContent = s.running ? "Run bezig..." : "Nu uitvoeren";
+  const mfa = s.icloud_status === "wacht_op_code" && s.running;
+  $("mfa").style.display = mfa ? "flex" : "none";
+  if (s.icloud_web_url) $("mfaLink").href = s.icloud_web_url;
+  else { $("mfaLink").removeAttribute("href"); $("mfaLink").textContent = "Poort 8080 van de container"; }
+
+  $("lastWhen").textContent = last ? "(" + fmt(last.started) + ", " + last.trigger + ")" : "";
+  const box = $("counters"); box.replaceChildren();
+  if (!last || !last.stats) { box.append(el("div", "empty", "Nog geen run afgerond.")); }
+  else for (const [key, label] of COUNTERS) {
+    const v = last.stats[key] ?? 0;
+    const c = el("div", "counter" + (key === "errors" && v ? " bad" : ""));
+    c.append(el("b", null, v), el("span", null, label)); box.append(c);
+  }
+  if (!userPicked && last && selectedRun !== last.id) { selectRun(last.id); }
+}
+
+async function loadReview() {
+  const { data } = await api("/api/review");
+  $("reviewCount").textContent = data.length ? "(" + data.length + ")" : "";
+  const box = $("review"); box.replaceChildren();
+  if (!data.length) { box.append(el("div", "empty", "Niets dat aandacht nodig heeft.")); return; }
+  const t = el("table"); const h = el("tr");
+  for (const c of ["Soort", "Bestand", "Details", ""]) h.append(el("th", null, c)); t.append(h);
+  for (const r of data) {
+    const tr = el("tr");
+    tr.append(el("td").appendChild(el("span", "tag", KINDS[r.kind] || r.kind)).parentNode);
+    tr.append(el("td", "path", r.path), el("td", null, r.detail || ""));
+    const b = el("button", "ghost", "Afgehandeld");
+    b.onclick = async () => { b.disabled = true; await api("/api/review/" + r.id + "/resolve", { method: "POST" }); loadReview(); refresh(); };
+    tr.append(el("td").appendChild(b).parentNode); t.append(tr);
+  }
+  box.append(t);
+}
+
+async function loadRuns() {
+  const { data } = await api("/api/runs?limit=30");
+  const sel = $("runSelect"); const keep = selectedRun; sel.replaceChildren();
+  for (const r of data) { const o = el("option", null, "#" + r.id + "  " + fmt(r.started) + "  (" + r.status + ")"); o.value = r.id; sel.append(o); }
+  if (keep) sel.value = keep;
+  const box = $("runs"); box.replaceChildren();
+  const t = el("table"); const h = el("tr");
+  for (const c of ["Run", "Start", "Door", "Status", "Verplaatst", "Fouten"]) h.append(el("th", null, c)); t.append(h);
+  for (const r of data) {
+    const st = r.stats ? JSON.parse(r.stats) : {};
+    const tr = el("tr", "run");
+    for (const v of ["#" + r.id + (r.dry_run ? " (droog)" : ""), fmt(r.started), r.trigger, r.status, st.moved ?? "", st.errors ?? ""]) tr.append(el("td", null, v));
+    tr.onclick = () => { userPicked = true; selectRun(r.id); window.scrollTo({ top: $("log").offsetTop - 80, behavior: "smooth" }); };
+    t.append(tr);
+  }
+  box.append(t);
+}
+
+function selectRun(id) {
+  selectedRun = id; lastEventId = 0; $("log").replaceChildren(); $("runSelect").value = id;
+  polling = false; pollLog();
+}
+$("runSelect").onchange = (e) => { userPicked = true; selectRun(+e.target.value); };
+
+let polling = false;
+async function pollLog() {
+  if (!selectedRun || polling) return;
+  polling = true;
+  try { await pollLogOnce(); } finally { polling = false; }
+}
+async function pollLogOnce() {
+  const run = selectedRun;
+  const { data } = await api("/api/runs/" + run + "/events?after=" + lastEventId);
+  if (run !== selectedRun || !Array.isArray(data)) return;
+  const log = $("log"); const stick = log.scrollTop + log.clientHeight >= log.scrollHeight - 30;
+  for (const e of data) {
+    lastEventId = e.id;
+    const line = el("div", e.level);
+    line.append(el("span", "step", e.ts.slice(11) + "  [" + e.step + "]  "), document.createTextNode(e.message));
+    log.append(line);
+  }
+  if (stick && data.length) log.scrollTop = log.scrollHeight;
+}
+
+async function refresh() {
+  try {
+    const { data } = await api("/api/status"); renderStatus(data);
+    await pollLog();
+  } catch (e) { $("state").textContent = "Geen verbinding"; $("dot").className = "dot err"; }
+}
+
+$("runBtn").onclick = async () => {
+  $("runBtn").disabled = true; userPicked = false;
+  const r = await api("/api/run", { method: "POST" });
+  if (!r.ok) alert(r.data.error || "Starten mislukt");
+  setTimeout(() => { refresh(); loadRuns(); }, 800);
+};
+
+let tick = 0;
+setInterval(() => { refresh(); if (++tick % 5 === 0) { loadReview(); loadRuns(); } }, 2000);
+refresh(); loadReview(); loadRuns();
+</script>
+</body>
+</html>
