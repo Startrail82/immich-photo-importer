@@ -2,6 +2,14 @@
 
 Every commit bumps the version (minor for features, patch for fixes).
 
+## 0.4.3
+
+- A schedule that is valid but never occurs (`0 0 31 2 *`) is now refused when you save it, with
+  an explanation, instead of being stored. Before this the planner thread crashed on it and no
+  automatic run ever happened again until the container was restarted.
+- The planner thread can no longer die from an unexpected error while planning: it logs and tries
+  again, and a "Run now" during that recovery is not lost.
+
 ## 0.4.2
 
 - A run no longer stops when exiftool is missing or fails on a batch: the files are still sorted,

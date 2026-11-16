@@ -7,7 +7,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 from .cron import CronError
-from .cron import parse as parse_cron
+from .cron import ensure_satisfiable
 
 
 class ConfigError(ValueError):
@@ -182,7 +182,7 @@ class Config:
         except ValueError:
             raise ConfigError(f"PI_SCHEDULE_TIME moet UU:MM zijn, kreeg: {self.schedule_time!r}") from None
         try:
-            parse_cron(self.cron_expression)
+            ensure_satisfiable(self.cron_expression)
         except CronError as exc:
             raise ConfigError(f"ongeldige planning: {exc}") from None
         if self.icloud_version not in ("original", "adjusted", "both"):

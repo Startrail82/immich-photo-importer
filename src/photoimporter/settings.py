@@ -14,7 +14,7 @@ from dataclasses import replace
 from datetime import datetime
 
 from .config import Config
-from .cron import CronError, describe, parse
+from .cron import CronError, describe, ensure_satisfiable
 from .store import Store
 
 KEY = "settings"
@@ -137,7 +137,7 @@ class SettingsManager:
     def describe_schedule(self, now: datetime | None = None, expression: str | None = None) -> dict:
         expr = expression if expression is not None else self.current()["schedule_cron"]
         try:
-            cron = parse(expr)
+            cron = ensure_satisfiable(expr, now)
         except CronError as exc:
             return {"valid": False, "error": str(exc), "text": "", "upcoming": []}
         upcoming = [t.strftime("%Y-%m-%d %H:%M") for t in cron.upcoming(now or datetime.now(), 3)]
@@ -151,7 +151,7 @@ class SettingsManager:
             if "schedule_cron" in data:
                 expr = str(data["schedule_cron"]).strip()
                 try:
-                    new["schedule_cron"] = parse(expr).expression
+                    new["schedule_cron"] = ensure_satisfiable(expr).expression
                 except CronError as exc:
                     raise SettingsError(f"planning: {exc}") from None
             if "schedule_enabled" in data:

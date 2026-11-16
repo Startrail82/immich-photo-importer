@@ -121,6 +121,17 @@ def parse(expression: str) -> Cron:
     return Cron(minutes, hours, days, months, weekdays, days_any, weekdays_any, " ".join(parts))
 
 
+def ensure_satisfiable(expression: str, now: datetime | None = None) -> Cron:
+    """Parseert de expressie en controleert dat hij ooit voorkomt.
+
+    '0 0 31 2 *' is volgens de grammatica geldig maar komt nooit voor. Zo'n planning hoort bij
+    het opslaan geweigerd te worden, in plaats van pas in de planner te ontploffen.
+    """
+    cron = parse(expression)
+    cron.next_after(now or datetime.now())
+    return cron
+
+
 def describe(expression: str) -> str:
     """Korte uitleg in het Nederlands voor de gangbare vormen; anders een neutrale zin."""
     cron = parse(expression)

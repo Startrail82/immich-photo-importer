@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from typing import Callable
 
 from .config import Config
+from .cron import CronError
 from .cron import parse as parse_cron
 from .organizer import RunAlreadyActive, RunResult, run_import
 from .settings import SettingsManager
@@ -44,6 +45,7 @@ class Scheduler:
         self._manual = False
         self._lock = threading.Lock()
         self._running = False
+        self._bad_cron = ""  # laatst gemelde planning die nooit voorkomt
         self._thread = threading.Thread(target=self._loop, name="planner", daemon=True)
 
     # --- publieke API (ook voor de webinterface) --------------------------
@@ -81,12 +83,25 @@ class Scheduler:
         cfg = self.effective_config()
         if not cfg.schedule_enabled:
             return None
-        return parse_cron(cfg.cron_expression).next_after(self._now())
+        try:
+            return parse_cron(cfg.cron_expression).next_after(self._now())
+        except CronError as exc:
+            # De webinterface vraagt dit bij elke statusverversing: alleen melden als de
+            # planning verandert, anders loopt het log vol.
+            if self._bad_cron != cfg.cron_expression:
+                self._bad_cron = cfg.cron_expression
+                log.error("planning %r komt nooit voor, er wordt niets ingepland: %s", cfg.cron_expression, exc)
+            return None
 
     # --- intern --------------------------------------------------------------
     def _loop(self) -> None:
         while not self._stop.is_set():
-            target = self.next_run
+            try:
+                target = self.next_run
+            except Exception:  # noqa: BLE001 - de planner mag nooit stilvallen
+                log.exception("kon de volgende run niet bepalen; opnieuw over 60 s")
+                self._wake.wait(60)  # niet wissen: een 'nu uitvoeren' mag niet verloren gaan
+                continue
             timeout = None if target is None else max(0.0, (target - self._now()).total_seconds())
             woken = self._wake.wait(timeout)
             if self._stop.is_set():
