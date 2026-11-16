@@ -2,6 +2,13 @@
 
 Every commit bumps the version (minor for features, patch for fixes).
 
+## 0.4.2
+
+- A run no longer stops when exiftool is missing or fails on a batch: the files are still sorted,
+  with the file date as the fallback, and the run reports `ok_met_fouten`. Before this a container
+  without exiftool sorted nothing at all, even though the file date was already the documented
+  fallback.
+
 ## 0.4.1
 
 - Docs/UI: corrected how edited versions interact with files that are already on the NAS.

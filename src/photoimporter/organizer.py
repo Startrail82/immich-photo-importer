@@ -17,7 +17,7 @@ from .config import Config
 from .icloud import download_icloud
 from .immich_sync import sync_immich
 from .media import classify
-from .metadata import file_date, read_exif_dates
+from .metadata import ExifToolError, ExifToolMissing, file_date, read_exif_dates
 from .runlog import RunLog
 from .sidecar import write_rating_sidecar
 from .store import Store
@@ -209,10 +209,28 @@ def collect_items(
     return items
 
 
-def plan_dates(items: list[Item], cfg: Config, log: RunLog) -> list[PlannedItem]:
+def plan_dates(
+    items: list[Item], cfg: Config, log: RunLog, stats: RunStats | None = None
+) -> list[PlannedItem]:
     step = "3/6 datums bepalen"
     log.info(step, f"EXIF-datums lezen voor {len(items)} bestand(en)")
-    exif = read_exif_dates([i.path for i in items])
+    failures = 0
+
+    def on_error(exc: ExifToolError, batch: list[Path]) -> bool:
+        # Nooit de hele run laten mislukken: zonder EXIF-datum is de bestandsdatum een goede
+        # terugval, en anders sorteert een kapotte exiftool helemaal niets meer.
+        nonlocal failures
+        failures += 1
+        log.error(
+            step,
+            f"EXIF-datums lezen mislukt voor {len(batch)} bestand(en) ({exc}); "
+            "voor die bestanden wordt de bestandsdatum gebruikt",
+        )
+        return isinstance(exc, ExifToolMissing)  # ontbreekt het programma, stop dan met proberen
+
+    exif = read_exif_dates([i.path for i in items], on_error=on_error)
+    if failures and stats is not None:
+        stats.errors += 1
 
     # Live Photos: een video met dezelfde naam als precies een foto in dezelfde map
     # volgt de datum van die foto.
@@ -314,7 +332,7 @@ def _run(cfg: Config, store: Store, run_id: int, log: RunLog, stats: RunStats) -
 
     items = collect_items(cfg, store, run_id, log, stats)
     if items:
-        plan = plan_dates(items, cfg, log)
+        plan = plan_dates(items, cfg, log, stats)
         _process_all(plan, cfg, store, run_id, log, stats)
         _cleanup(cfg, log)
     else:
