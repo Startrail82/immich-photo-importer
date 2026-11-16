@@ -106,6 +106,7 @@ class WebApp:
             "running": self.scheduler.running or bool(last and last["status"] == "bezig"),
             "next_run": nxt.strftime("%Y-%m-%d %H:%M") if nxt else None,
             "icloud_status": self.store.get_state(STATE_KEY, "onbekend"),
+            "icloud_busy": self.libraries_busy,
             "icloud_configured": self.cfg.icloud_enabled,
             "icloud_web_url": self.cfg.icloud_web_url,
             "immich_configured": self.cfg.immich_enabled,

@@ -3,6 +3,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import sys
+import threading
 from pathlib import Path
 
 import pytest
@@ -174,6 +175,35 @@ def test_list_libraries_reports_apple_error(icloud):
 
     assert names is None
     assert "indexing" in message
+
+
+def test_list_libraries_resets_the_waiting_for_code_state(icloud):
+    configure, calls, store, dirs, tmp = icloud
+    cfg = configure({"libraries": ["PrimarySync"]})
+    store.set_state("icloud_status", "wacht_op_code")
+
+    list_libraries(cfg, store, _Log())
+
+    assert store.get_state("icloud_status") == "ok"
+
+
+def test_run_waits_for_a_busy_icloud_action_and_says_so(icloud):
+    configure, calls, store, dirs, tmp = icloud
+    cfg = configure({"downloads": {}})
+    ICLOUD_LOCK.acquire()
+    done = threading.Event()
+
+    def go():
+        run_import(cfg, store)
+        done.set()
+
+    t = threading.Thread(target=go, daemon=True)
+    t.start()
+    assert not done.wait(1.0)  # wacht op de lock
+    ICLOUD_LOCK.release()
+    assert done.wait(15)
+    runs = store.list_runs(1)
+    assert "ik wacht tot die klaar is" in event_messages(store, runs[0]["id"])
 
 
 def test_list_libraries_refuses_when_icloud_is_busy(icloud):

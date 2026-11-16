@@ -257,7 +257,10 @@ def download_icloud(cfg: Config, store: Store, log, stats) -> bool:
             f"wissen in iCloud staat AAN: wat ouder is dan {cfg.icloud_keep_days} dagen wordt na het "
             "downloaden uit iCloud gewist (en dus ook van je iPhone)",
         )
-    with ICLOUD_LOCK:
+    if not ICLOUD_LOCK.acquire(blocking=False):
+        log.warn(STEP, "er is al een iCloud-actie bezig (bv. bibliotheken ophalen); ik wacht tot die klaar is")
+        ICLOUD_LOCK.acquire()
+    try:
         ok = authenticate(cfg, store, log)
         if not ok:
             log.warn(STEP, "iCloud-downloads overgeslagen vanwege de fout hierboven")
@@ -265,6 +268,8 @@ def download_icloud(cfg: Config, store: Store, log, stats) -> bool:
             name = library or DEFAULT_LIBRARY
             if not _download_library(cfg, library, name, log):
                 ok = False
+    finally:
+        ICLOUD_LOCK.release()
 
     stats.downloaded = max(
         0, _count_media(cfg.source_favorites) + _count_media(cfg.source_other) - total_before
@@ -314,7 +319,11 @@ def list_libraries(cfg: Config, store: Store | None, log) -> tuple[list[str] | N
         return None, "er is al een iCloud-actie bezig (bv. een run); probeer het zo opnieuw"
     try:
         if not authenticate(cfg, store, log):
+            if store is not None:
+                store.set_state(STATE_KEY, "fout")
             return None, "inloggen bij iCloud mislukt of tweestapscode niet op tijd ingevoerd"
+        if store is not None:
+            store.set_state(STATE_KEY, "ok")  # wist 'wacht_op_code' zodra de code is ingevoerd
         cmd = _base_command(cfg) + ["--list-libraries", "--directory", str(cfg.source_other)]
         result = run_process(cmd, 300, log, "iCloud bibliotheken", [cfg.icloud_password])
     finally:

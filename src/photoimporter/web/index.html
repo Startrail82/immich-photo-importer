@@ -218,7 +218,7 @@ function renderStatus(s) {
   $("meta").textContent = bits.join("  ·  ");
   $("runBtn").disabled = s.running;
   $("runBtn").textContent = s.running ? "Run bezig..." : "Nu uitvoeren";
-  const mfa = s.icloud_status === "wacht_op_code" && s.running;
+  const mfa = s.icloud_status === "wacht_op_code" && (s.running || s.icloud_busy);
   $("mfa").style.display = mfa ? "flex" : "none";
   if (s.icloud_web_url) $("mfaLink").href = s.icloud_web_url;
   else { $("mfaLink").removeAttribute("href"); $("mfaLink").textContent = "Poort 8080 van de container"; }

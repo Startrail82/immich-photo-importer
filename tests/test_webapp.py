@@ -210,3 +210,14 @@ def test_refresh_libraries_failure_is_shown_not_raised(web, monkeypatch):
     )
     assert call(base + "/api/libraries/refresh", "POST")[0] == 202
     assert wait_for(lambda: "indexing" in json.loads(call(base + "/api/settings")[1])["libraries"]["message"])
+
+
+def test_status_reports_icloud_busy_while_libraries_are_fetched(web, monkeypatch):
+    base, *_ = web
+    release = threading.Event()
+    monkeypatch.setattr("photoimporter.webapp.list_libraries", lambda c, s, l: (release.wait(5), ["PrimarySync"], "ok")[1:])
+    assert json.loads(call(base + "/api/status")[1])["icloud_busy"] is False
+    call(base + "/api/libraries/refresh", "POST")
+    assert json.loads(call(base + "/api/status")[1])["icloud_busy"] is True
+    release.set()
+    assert wait_for(lambda: json.loads(call(base + "/api/status")[1])["icloud_busy"] is False)
