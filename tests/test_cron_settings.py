@@ -278,3 +278,14 @@ def test_with_overrides_uses_form_values_without_saving(env):
     cfg = mgr.with_overrides({"icloud_username": "form@x.y", "icloud_password": "", "immich_api_key": "nieuw"})
     assert cfg.icloud_username == "form@x.y" and cfg.icloud_password == "bewaard" and cfg.immich_api_key == "nieuw"
     assert mgr.effective().immich_api_key != "nieuw"
+
+
+def test_download_version_setting_is_validated_and_applied(env):
+    from photoimporter.settings import SettingsError
+
+    mgr, _ = _mgr(env)
+    assert mgr.effective().icloud_version == "original"
+    mgr.update({"download_version": "adjusted"})
+    assert mgr.effective().icloud_version == "adjusted"
+    with pytest.raises(SettingsError):
+        mgr.update({"download_version": "edited"})

@@ -198,6 +198,10 @@ def _download(
         "--set-exif-datetime",
         "--live-photo-mov-filename-policy", "original",
     ]  # fmt: skip
+    if cfg.icloud_version == "adjusted":
+        cmd += ["--size", "adjusted"]  # bewerkte versie, of het origineel als er niets bewerkt is
+    elif cfg.icloud_version == "both":
+        cmd += ["--size", "original", "--size", "adjusted"]  # bewerkte krijgt -adjusted in de naam
     if album:
         cmd += ["--album", album]
     if keep_days is not None:

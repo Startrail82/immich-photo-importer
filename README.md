@@ -73,6 +73,11 @@ earlier runs and the "Run now" button. **Settings**:
 - **Planning**: a cron expression with a plain-language explanation and the next three runs.
 - **iCloud libraries**: fetch the list from your account and tick the libraries to download, plus
   the name of the favorites album.
+- **Edited photos**: iCloud keeps edits (color, crop) separate from the original. Choose to download
+  the original (default), the edited version (or the original if nothing was edited), or both (the
+  edited file gets an `-adjusted` suffix, so the photo appears twice in Immich). Already downloaded
+  photos are not fetched again. With "edited" the unedited original never reaches your NAS, so do
+  not combine it with deleting in iCloud if you may want the original later.
 - **Deleting in iCloud**: off by default. When on, assets older than N days are deleted from iCloud
   after download. This also removes them from your iPhone (30 days in "Recently Deleted").
 
@@ -99,6 +104,7 @@ Most connection and schedule values can also be set in the web UI; the UI wins o
 | `PI_ICLOUD_PASSWORD` or `PI_ICLOUD_PASSWORD_FILE` | empty | password (or path to a secret file) |
 | `PI_ICLOUD_FAVORITES_ALBUM` | `Favorites` | exact name of the favorites album (see `icloud-check`) |
 | `PI_ICLOUD_LIBRARY` | empty | comma-separated libraries; empty = personal library |
+| `PI_ICLOUD_VERSION` | `original` | `original`, `adjusted` (edited, or original if unedited) or `both` |
 | `PI_ICLOUD_KEEP_RECENT_DAYS` | unset | set = delete from iCloud what is older than N days |
 | `PI_ICLOUD_COOKIE_DIR` | `<data>/icloud-cookies` | keeps the iCloud session; must be a volume |
 | `PI_ICLOUD_AUTH_WAIT_SECONDS` | `1800` | how long to wait for a two-factor code |

@@ -2,6 +2,12 @@
 
 Every commit bumps the version (minor for features, patch for fixes).
 
+## 0.4.0
+
+- Settings: choose which version of edited photos is downloaded: original (default), edited
+  (`--size adjusted`, falls back to the original when nothing was edited) or both (the edited
+  file gets an `-adjusted` suffix). Environment fallback: `PI_ICLOUD_VERSION`.
+
 ## 0.3.0
 
 - Settings tab: connections (iCloud Apple ID, password, code-page URL; Immich URL and API key).

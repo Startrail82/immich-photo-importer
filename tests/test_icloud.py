@@ -409,3 +409,18 @@ def test_probe_icloud_requires_credentials(icloud):
     result = probe_icloud(cfg, store, _Log())
 
     assert result["ok"] is False and "wachtwoord" in result["steps"][0]["message"]
+
+
+@pytest.mark.parametrize(
+    "version, expected",
+    [("original", []), ("adjusted", ["adjusted"]), ("both", ["original", "adjusted"])],
+)
+def test_download_version_selects_the_icloudpd_sizes(icloud, version, expected):
+    configure, calls, store, dirs, tmp = icloud
+    run_import(configure({"downloads": {}}, icloud_version=version), store)
+
+    auth, fav, other = calls()
+    for cmd in (fav, other):
+        sizes = [cmd[i + 1] for i, a in enumerate(cmd) if a == "--size"]
+        assert sizes == expected
+    assert "--size" not in auth

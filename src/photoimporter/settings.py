@@ -47,6 +47,7 @@ class SettingsManager:
             "favorites_album": b.icloud_favorites_album,
             "delete_enabled": b.icloud_keep_days is not None,
             "keep_days": b.icloud_keep_days if b.icloud_keep_days is not None else DEFAULT_KEEP_DAYS,
+            "download_version": b.icloud_version,
             "icloud_username": b.icloud_username,
             "icloud_web_url": b.icloud_web_url,
             "immich_url": b.immich_url,
@@ -92,6 +93,7 @@ class SettingsManager:
             icloud_libraries=() if libs == ("PrimarySync",) else libs,
             icloud_favorites_album=s["favorites_album"],
             icloud_keep_days=int(s["keep_days"]) if s["delete_enabled"] else None,
+            icloud_version=s["download_version"],
             icloud_username=s["icloud_username"],
             icloud_web_url=s["icloud_web_url"],
             immich_url=s["immich_url"],
@@ -170,6 +172,11 @@ class SettingsManager:
                 if not album or len(album) > 120:
                     raise SettingsError("de naam van het favorietenalbum mag niet leeg zijn")
                 new["favorites_album"] = album
+            if "download_version" in data:
+                version = str(data["download_version"]).strip().lower()
+                if version not in ("original", "adjusted", "both"):
+                    raise SettingsError("de te downloaden versie moet original, adjusted of both zijn")
+                new["download_version"] = version
             if "delete_enabled" in data:
                 new["delete_enabled"] = bool(data["delete_enabled"])
             if "keep_days" in data:
