@@ -75,8 +75,9 @@ earlier runs and the "Run now" button. **Settings**:
   the name of the favorites album.
 - **Edited photos**: iCloud keeps edits (color, crop) separate from the original. Choose to download
   the original (default), the edited version (or the original if nothing was edited), or both (the
-  edited file gets an `-adjusted` suffix, so the photo appears twice in Immich). Already downloaded
-  photos are not fetched again. With "edited" the unedited original never reaches your NAS, so do
+  edited file gets an `-adjusted` suffix, so the photo appears twice in Immich). The source
+  folders are emptied after sorting, so every run fetches the selected version of all photos again; an
+  edited file that differs from the original already on the NAS arrives next to it as a `_1` copy. With "edited" the unedited original never reaches your NAS, so do
   not combine it with deleting in iCloud if you may want the original later.
 - **Deleting in iCloud**: off by default. When on, assets older than N days are deleted from iCloud
   after download. This also removes them from your iPhone (30 days in "Recently Deleted").

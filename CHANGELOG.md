@@ -2,6 +2,10 @@
 
 Every commit bumps the version (minor for features, patch for fixes).
 
+## 0.4.1
+
+- Docs/UI: corrected how edited versions interact with files that are already on the NAS.
+
 ## 0.4.0
 
 - Settings: choose which version of edited photos is downloaded: original (default), edited
