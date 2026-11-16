@@ -2,6 +2,12 @@
 
 Every commit bumps the version (minor for features, patch for fixes).
 
+## 0.4.4
+
+- The web API rejects a bad `limit` or `after` (for example `?limit=abc`) with a 400 and a message
+  instead of closing the connection without an answer, and `?limit=-1` no longer returns every run
+  ever recorded.
+
 ## 0.4.3
 
 - A schedule that is valid but never occurs (`0 0 31 2 *`) is now refused when you save it, with

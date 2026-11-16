@@ -255,3 +255,23 @@ def test_icloud_test_runs_in_background_and_result_is_polled(web, monkeypatch):
         return not t["busy"] and t["result"] is not None
 
     assert wait_for(done)
+
+
+def test_bad_query_parameters_get_a_400_instead_of_no_answer(web):
+    """`?limit=abc` sloot de verbinding zonder antwoord: de fetch in de UI faalde zonder uitleg."""
+    base, *_ = web
+    for path, parameter in (
+        ("/api/runs?limit=abc", "limit"),
+        ("/api/runs?limit=0", "limit"),
+        ("/api/runs?limit=-1", "limit"),
+        ("/api/runs?limit=1001", "limit"),
+        ("/api/runs/1/events?after=x", "after"),
+        ("/api/runs/1/events?after=-1", "after"),
+    ):
+        status, body = call(base + path)
+        assert status == 400, path
+        assert parameter in json.loads(body)["error"]
+
+    assert call(base + "/api/runs?limit=5")[0] == 200
+    assert call(base + "/api/runs/1/events?after=0")[0] == 200
+    assert call(base + "/api/runs")[0] == 200
