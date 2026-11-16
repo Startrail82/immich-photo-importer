@@ -1,0 +1,22 @@
+# Authentik proxy-outpost voor utility-gpu (Dockhand-stack "authentik-outpost-photo", omgeving utility-gpu).
+# Variabelen zet je in Dockhand: AUTHENTIK_TOKEN (als secret).
+# De image-tag moet gelijk zijn aan die van de Authentik-server en -worker.
+services:
+  authentik-outpost-photo:
+    image: ghcr.io/goauthentik/proxy:2026.8.4
+    container_name: authentik-outpost-photo
+    restart: unless-stopped
+    environment:
+      AUTHENTIK_HOST: https://auth.bluelight.one
+      AUTHENTIK_INSECURE: "false"
+      AUTHENTIK_TOKEN: ${AUTHENTIK_TOKEN}
+    ports:
+      # Enkel op het LAN-adres van deze VM; Traefik (op utility) stuurt hierheen.
+      - "192.168.100.81:9000:9000"
+    networks:
+      - outpost
+
+networks:
+  outpost:
+    external: true
+    name: authentik-outpost

@@ -25,10 +25,15 @@ services:
       - pi_data:/data
       - /mnt/nfs/nas1/photo/Import:/import
       - /mnt/nfs/nas1/photo/Ongesorteerd:/target
-    ports:
-      # Alleen op het LAN-adres van deze VM; Traefik (op utility) bereikt ze via 192.168.100.81.
-      - "192.168.100.81:8420:8000"   # webinterface
-      - "192.168.100.81:8421:8080"   # icloudpd-codepagina
+    # Bewust GEEN gepubliceerde poorten: de app is enkel bereikbaar via de Authentik-outpost
+    # (container "authentik-outpost-photo") op het gedeelde netwerk hieronder.
+    networks:
+      - outpost
+
+networks:
+  outpost:
+    external: true
+    name: authentik-outpost
 
 volumes:
   pi_data:
