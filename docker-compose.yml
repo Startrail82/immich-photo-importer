@@ -26,7 +26,7 @@ services:
       - /mnt/nfs/nas1/photo/Import:/import
       - /mnt/nfs/nas1/photo/Ongesorteerd:/target
     # Bewust GEEN gepubliceerde poorten: de app is enkel bereikbaar via de Authentik-outpost
-    # (container "authentik-outpost-photo") op het gedeelde netwerk hieronder.
+    # (container "authentik-outpost") op het gedeelde netwerk hieronder.
     networks:
       - outpost
 
