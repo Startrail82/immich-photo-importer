@@ -1,4 +1,4 @@
-"""Planner: dagelijks op een vast uur, plus een 'nu uitvoeren' die direct start."""
+"""Planner: volgens een cron-expressie (standaard dagelijks 12:00), plus een 'nu uitvoeren' dat direct start."""
 
 from __future__ import annotations
 
@@ -8,7 +8,9 @@ from datetime import datetime, timedelta
 from typing import Callable
 
 from .config import Config
+from .cron import parse as parse_cron
 from .organizer import RunAlreadyActive, RunResult, run_import
+from .settings import SettingsManager
 from .store import Store
 
 log = logging.getLogger("photoimporter.planner")
@@ -30,9 +32,11 @@ class Scheduler:
         store: Store,
         runner: Callable[..., RunResult] = run_import,
         now: Callable[[], datetime] = datetime.now,
+        settings: SettingsManager | None = None,
     ):
         self.cfg = cfg
         self.store = store
+        self.settings = settings
         self._runner = runner
         self._now = now
         self._wake = threading.Event()
@@ -61,15 +65,23 @@ class Scheduler:
         self._wake.set()
         return True
 
+    def reload(self) -> None:
+        """Instellingen zijn gewijzigd: opnieuw plannen zonder een run te starten."""
+        self._wake.set()
+
+    def effective_config(self) -> Config:
+        return self.settings.effective() if self.settings else self.cfg
+
     @property
     def running(self) -> bool:
         return self._running
 
     @property
     def next_run(self) -> datetime | None:
-        if not self.cfg.schedule_enabled:
+        cfg = self.effective_config()
+        if not cfg.schedule_enabled:
             return None
-        return next_run_after(self._now(), self.cfg.schedule_time)
+        return parse_cron(cfg.cron_expression).next_after(self._now())
 
     # --- intern --------------------------------------------------------------
     def _loop(self) -> None:
@@ -82,16 +94,19 @@ class Scheduler:
             with self._lock:
                 manual, self._manual = self._manual, False
                 self._wake.clear()
-            if not woken and target is None:
-                continue
-            self._run_once("handmatig" if manual else "gepland")
+            if manual:
+                self._run_once("handmatig")
+            elif woken or target is None:
+                continue  # instellingen gewijzigd (of niets ingepland): opnieuw plannen
+            else:
+                self._run_once("gepland")
 
     def _run_once(self, trigger: str) -> None:
         with self._lock:
             self._running = True
         try:
             log.info("%s run gestart", trigger)
-            result = self._runner(self.cfg, self.store, trigger)
+            result = self._runner(self.effective_config(), self.store, trigger)
             log.info("run %s klaar: %s", result.run_id, result.status)
         except RunAlreadyActive:
             log.warning("run overgeslagen: er loopt al een run (bv. via de opdrachtregel)")

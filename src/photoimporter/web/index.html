@@ -63,12 +63,38 @@
     background: var(--card); color: var(--text); }
   .empty { color: var(--muted); padding: 8px 0; }
   tr.run { cursor: pointer; } tr.run:hover td { background: var(--chip); }
+  nav { display: flex; gap: 4px; }
+  nav a { padding: 7px 16px; border-radius: 999px; color: var(--muted); text-decoration: none; font-weight: 600; cursor: pointer; }
+  nav a.active { background: var(--chip); color: var(--primary); }
+  .panel { display: grid; gap: 20px; }
+  .panel[hidden] { display: none; }
+  label.field { display: block; font-weight: 600; margin: 0 0 6px; }
+  .hint { color: var(--muted); font-size: 13px; margin: 4px 0 0; font-weight: 400; }
+  input[type=text], input[type=number] { font: inherit; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--border);
+    background: var(--card); color: var(--text); width: 100%; max-width: 420px; }
+  input.mono { font-family: ui-monospace, Menlo, Consolas, monospace; }
+  input[type=number] { width: 110px; }
+  input.bad { border-color: var(--err); }
+  .check { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; cursor: pointer; }
+  .check input { margin-top: 5px; width: 18px; height: 18px; accent-color: var(--primary); }
+  .check small { display: block; color: var(--muted); font-size: 13px; }
+  .quick { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+  .explain { margin-top: 8px; font-size: 14px; }
+  .explain.bad { color: var(--err); }
+  .warnbox { border: 1px solid var(--warn); background: color-mix(in srgb, var(--warn) 12%, var(--card));
+    border-radius: 12px; padding: 12px 16px; font-size: 14px; margin-top: 10px; }
+  .savebar { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+  .msg.ok { color: var(--ok); } .msg.bad { color: var(--err); font-weight: 600; }
 </style>
 </head>
 <body>
 <header>
   <div class="logo">PI</div>
   <h1>Photo Importer</h1>
+  <nav>
+    <a id="nav-overview" data-tab="overview">Overzicht</a>
+    <a id="nav-settings" data-tab="settings">Instellingen</a>
+  </nav>
   <span class="ver" id="ver"></span>
 </header>
 <main>
@@ -77,6 +103,7 @@
     <a class="btn" id="mfaLink" target="_blank" rel="noopener">Code invoeren</a>
   </div>
 
+  <div class="panel" id="tab-overview">
   <section class="card">
     <div class="top">
       <div>
@@ -110,6 +137,50 @@
     <h2>Eerdere runs</h2>
     <div id="runs"></div>
   </section>
+  </div>
+
+  <div class="panel" id="tab-settings" hidden>
+    <section class="card">
+      <h2>Planning</h2>
+      <label class="check"><input type="checkbox" id="sEnabled"><span>Automatisch uitvoeren volgens de planning
+        <small>Uit = alleen de knop "Nu uitvoeren" start een run.</small></span></label>
+      <label class="field" for="sCron" style="margin-top:10px">Cron-expressie</label>
+      <input type="text" class="mono" id="sCron" spellcheck="false" autocomplete="off" placeholder="0 12 * * *">
+      <p class="hint">Vijf velden: minuut, uur, dag van de maand, maand, weekdag. Bijvoorbeeld <code>0 12 * * *</code> is elke dag om 12:00.</p>
+      <div class="quick" id="quick"></div>
+      <div class="explain" id="sExplain"></div>
+    </section>
+
+    <section class="card">
+      <h2>iCloud-bibliotheken</h2>
+      <p class="hint" style="margin-top:0">Vink aan welke bibliotheken gedownload worden. Alles komt in dezelfde datumstructuur; dubbele bestanden worden automatisch ontdubbeld.</p>
+      <div class="row" style="margin-top:12px">
+        <button class="ghost" id="libBtn">Bibliotheken ophalen</button>
+        <span class="meta" id="libMsg"></span>
+      </div>
+      <div id="libList"></div>
+      <label class="field" for="sAlbum" style="margin-top:14px">Naam van het favorietenalbum</label>
+      <input type="text" id="sAlbum" autocomplete="off" placeholder="Favorites">
+      <p class="hint">Exact zoals iCloud het noemt (bij een Engelstalig account: Favorites). Dit album wordt in elke aangevinkte bibliotheek gezocht.</p>
+    </section>
+
+    <section class="card">
+      <h2>Wissen in iCloud</h2>
+      <label class="check"><input type="checkbox" id="sDelete"><span>Na het downloaden ook uit iCloud wissen
+        <small>Uit = alleen kopi&euml;ren; er wordt nooit iets in iCloud gewist.</small></span></label>
+      <div id="sDeleteBox" hidden>
+        <label class="field" for="sDays" style="margin-top:8px">Bewaar de laatste (dagen) in iCloud</label>
+        <input type="number" id="sDays" min="1" max="3650">
+        <p class="hint">Wat nieuwer is dan dit aantal dagen blijft in iCloud staan. Alles dat ouder is, wordt na het downloaden gewist. Favorieten worden eerst binnengehaald en gemarkeerd.</p>
+        <div class="warnbox"><b>Let op:</b> wissen in iCloud Foto's verwijdert de foto's ook van je iPhone en andere toestellen. Ze blijven 30 dagen in "Recent verwijderd". Zorg dat de NAS (Immich) een back-up heeft voor je dit aanzet.</div>
+      </div>
+    </section>
+
+    <div class="savebar">
+      <button id="saveBtn">Opslaan</button>
+      <span class="msg" id="saveMsg"></span>
+    </div>
+  </div>
 </main>
 
 <script>
@@ -238,6 +309,113 @@ $("runBtn").onclick = async () => {
   if (!r.ok) alert(r.data.error || "Starten mislukt");
   setTimeout(() => { refresh(); loadRuns(); }, 800);
 };
+
+// ---- tabbladen ---------------------------------------------------------------
+function showTab(name) {
+  for (const t of ["overview", "settings"]) {
+    $("tab-" + t).hidden = t !== name;
+    $("nav-" + t).className = t === name ? "active" : "";
+  }
+  history.replaceState(null, "", name === "settings" ? "#instellingen" : "#");
+  if (name === "settings") loadSettings();
+}
+$("nav-overview").onclick = () => showTab("overview");
+$("nav-settings").onclick = () => showTab("settings");
+
+// ---- instellingen ---------------------------------------------------------------
+const QUICK = [
+  ["Dagelijks 12:00", "0 12 * * *"], ["Elke nacht 03:00", "0 3 * * *"], ["Werkdagen 07:00", "0 7 * * 1-5"],
+  ["Elke 6 uur", "0 */6 * * *"], ["Elk uur", "0 * * * *"], ["Wekelijks, zondag 04:00", "0 4 * * 0"],
+];
+const selLibs = new Set(); let knownLibs = []; let libTimer = null; let deleteWasOn = false;
+
+for (const [label, expr] of QUICK) {
+  const b = el("button", "ghost", label); b.type = "button";
+  b.onclick = () => { $("sCron").value = expr; previewCron(); };
+  $("quick").append(b);
+}
+
+let previewTimer = null;
+function previewCron() {
+  clearTimeout(previewTimer);
+  previewTimer = setTimeout(async () => {
+    const expr = $("sCron").value;
+    const { data } = await api("/api/schedule/preview?cron=" + encodeURIComponent(expr));
+    const box = $("sExplain"); box.replaceChildren();
+    $("sCron").classList.toggle("bad", !data.valid);
+    if (!data.valid) { box.className = "explain bad"; box.textContent = data.error; return; }
+    box.className = "explain";
+    box.append(el("b", null, "Dit betekent: " + data.text + "."), el("br"),
+      document.createTextNode("Eerstvolgende uitvoeringen: " + data.upcoming.join("  ·  ")));
+  }, 250);
+}
+$("sCron").oninput = previewCron;
+
+function libLabel(name) {
+  if (name === "PrimarySync") return "Persoonlijke bibliotheek";
+  if (name.startsWith("SharedSync-")) return "Gedeelde bibliotheek";
+  return name;
+}
+function renderLibs(libs) {
+  knownLibs = libs.names || [];
+  const names = [...new Set([...knownLibs, ...selLibs])];
+  const box = $("libList"); box.replaceChildren();
+  for (const n of names) {
+    const row = el("label", "check"); const cb = document.createElement("input"); cb.type = "checkbox";
+    cb.checked = selLibs.has(n);
+    cb.onchange = () => { cb.checked ? selLibs.add(n) : selLibs.delete(n); };
+    const txt = el("span", null, libLabel(n)); txt.append(el("small", null, n));
+    row.append(cb, txt); box.append(row);
+  }
+  $("libMsg").textContent = (libs.message || "") + (libs.at && !libs.busy ? "  (" + libs.at + ")" : "");
+  $("libBtn").disabled = !!libs.busy;
+  $("libBtn").textContent = libs.busy ? "Bezig met ophalen..." : "Bibliotheken ophalen";
+}
+async function pollLibs() {
+  clearTimeout(libTimer);
+  const { data } = await api("/api/settings");
+  renderLibs(data.libraries);
+  if (data.libraries.busy) libTimer = setTimeout(pollLibs, 2000);
+}
+$("libBtn").onclick = async () => {
+  $("libBtn").disabled = true;
+  const r = await api("/api/libraries/refresh", { method: "POST" });
+  if (!r.ok && r.status !== 409) { $("libMsg").textContent = r.data.error || "Starten mislukt"; }
+  pollLibs();
+};
+
+function fillSettings(d) {
+  const s = d.settings;
+  $("sEnabled").checked = s.schedule_enabled; $("sCron").value = s.schedule_cron;
+  $("sAlbum").value = s.favorites_album; $("sDelete").checked = s.delete_enabled; $("sDays").value = s.keep_days;
+  deleteWasOn = s.delete_enabled; $("sDeleteBox").hidden = !s.delete_enabled;
+  selLibs.clear(); for (const n of s.libraries) selLibs.add(n);
+  renderLibs(d.libraries); previewCron();
+  if (d.libraries.busy) pollLibs();
+}
+async function loadSettings() {
+  const { data } = await api("/api/settings"); fillSettings(data);
+  if (!data.icloud_configured) $("libMsg").textContent = "iCloud is nog niet ingesteld (gebruikersnaam en wachtwoord in Dockhand).";
+}
+$("sDelete").onchange = () => { $("sDeleteBox").hidden = !$("sDelete").checked; };
+
+$("saveBtn").onclick = async () => {
+  const msg = $("saveMsg"); msg.className = "msg"; msg.textContent = "";
+  const del = $("sDelete").checked;
+  if (del && !deleteWasOn && !confirm("Wissen in iCloud verwijdert foto's ook van je iPhone (30 dagen in 'Recent verwijderd'). Weet je het zeker?")) return;
+  $("saveBtn").disabled = true;
+  const body = {
+    schedule_enabled: $("sEnabled").checked, schedule_cron: $("sCron").value, libraries: [...selLibs],
+    favorites_album: $("sAlbum").value, delete_enabled: del, keep_days: $("sDays").value,
+  };
+  const r = await api("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  $("saveBtn").disabled = false;
+  if (!r.ok) { msg.className = "msg bad"; msg.textContent = r.data.error || "Opslaan mislukt"; return; }
+  fillSettings(r.data); msg.className = "msg ok"; msg.textContent = "Opgeslagen. De planning is meteen bijgewerkt.";
+  refresh();
+};
+
+showTab(location.hash === "#instellingen" ? "settings" : "overview");
 
 let tick = 0;
 setInterval(() => { refresh(); if (++tick % 5 === 0) { loadReview(); loadRuns(); } }, 2000);

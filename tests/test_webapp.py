@@ -114,3 +114,99 @@ def test_review_list_and_resolve(web):
     assert call(f"{base}/api/review/{items[0]['id']}/resolve", "POST")[0] == 200
     assert json.loads(call(base + "/api/review")[1]) == []
     assert json.loads(call(base + "/api/status")[1])["open_review"] == 0
+
+
+# --- instellingen --------------------------------------------------------------
+
+
+def post_json(url, payload):
+    req = urllib.request.Request(
+        url, method="POST", data=json.dumps(payload).encode(), headers={"Content-Type": "application/json"}
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=5) as r:
+            return r.status, json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        return e.code, json.loads(e.read())
+
+
+def test_settings_are_readable_with_schedule_explanation(web):
+    base, *_ = web
+    status, body = call(base + "/api/settings")
+    data = json.loads(body)
+    assert status == 200
+    assert data["settings"]["schedule_cron"] == "0 12 * * *"
+    assert data["schedule"]["text"] == "elke dag om 12:00" and len(data["schedule"]["upcoming"]) == 3
+    assert data["libraries"]["busy"] is False
+
+
+def test_saving_settings_updates_the_planner_immediately(web):
+    base, store, scheduler, gate, calls = web
+    status, data = post_json(
+        base + "/api/settings",
+        {"schedule_cron": "15 6 * * 1-5", "libraries": ["SharedSync-ABC"], "delete_enabled": True, "keep_days": 10},
+    )
+    assert status == 200
+    assert data["schedule"]["text"] == "elke werkdag (ma-vr) om 06:15"
+    assert wait_for(lambda: scheduler.next_run.strftime("%H:%M") == "06:15")
+    assert calls == []  # opslaan start geen run
+    assert scheduler.effective_config().icloud_libraries == ("SharedSync-ABC",)
+    assert scheduler.effective_config().icloud_keep_days == 10
+
+
+def test_invalid_settings_give_a_clear_error_and_are_not_saved(web):
+    base, *_ = web
+    status, data = post_json(base + "/api/settings", {"schedule_cron": "elke dag"})
+    assert status == 422 and "planning" in data["error"]
+    status, data = post_json(base + "/api/settings", {"keep_days": 0})
+    assert status == 422
+    assert json.loads(call(base + "/api/settings")[1])["settings"]["schedule_cron"] == "0 12 * * *"
+
+
+def test_settings_post_rejects_garbage_and_foreign_origin(web):
+    base, *_ = web
+    req = urllib.request.Request(base + "/api/settings", method="POST", data=b"niet json")
+    with pytest.raises(urllib.error.HTTPError) as err:
+        urllib.request.urlopen(req, timeout=5)
+    assert err.value.code == 400
+    status, _ = call(base + "/api/settings", "POST", {"Origin": "https://kwaadaardig.example"})
+    assert status == 403
+
+
+def test_schedule_preview_endpoint(web):
+    base, *_ = web
+    ok = json.loads(call(base + "/api/schedule/preview?cron=*/30+*+*+*+*")[1])
+    assert ok["valid"] and ok["text"] == "elke 30 minuten"
+    bad = json.loads(call(base + "/api/schedule/preview?cron=foutief")[1])
+    assert not bad["valid"] and bad["error"]
+
+
+def test_refresh_libraries_runs_in_background_and_is_remembered(web, monkeypatch):
+    base, *_ = web
+    release = threading.Event()
+
+    def fake_list(cfg, store, log):
+        release.wait(5)
+        return ["PrimarySync", "SharedSync-ABC"], "2 bibliotheek/bibliotheken gevonden"
+
+    monkeypatch.setattr("photoimporter.webapp.list_libraries", fake_list)
+
+    status, body = call(base + "/api/libraries/refresh", "POST")
+    assert status == 202
+    assert json.loads(call(base + "/api/settings")[1])["libraries"]["busy"] is True
+    assert call(base + "/api/libraries/refresh", "POST")[0] == 409  # al bezig
+
+    release.set()
+    assert wait_for(lambda: json.loads(call(base + "/api/settings")[1])["libraries"]["busy"] is False)
+    libs = json.loads(call(base + "/api/settings")[1])["libraries"]
+    assert libs["names"] == ["PrimarySync", "SharedSync-ABC"]
+
+
+def test_refresh_libraries_failure_is_shown_not_raised(web, monkeypatch):
+    base, *_ = web
+    monkeypatch.setattr(
+        "photoimporter.webapp.list_libraries",
+        lambda cfg, store, log: (None, "bibliotheken ophalen mislukt: not finished indexing yet"),
+    )
+    assert call(base + "/api/libraries/refresh", "POST")[0] == 202
+    assert wait_for(lambda: "indexing" in json.loads(call(base + "/api/settings")[1])["libraries"]["message"])

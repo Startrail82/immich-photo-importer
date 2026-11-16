@@ -6,9 +6,22 @@ import os
 from dataclasses import dataclass, replace
 from pathlib import Path
 
+from .cron import CronError
+from .cron import parse as parse_cron
+
 
 class ConfigError(ValueError):
     pass
+
+
+def _env_optional_int(name: str) -> int | None:
+    raw = os.environ.get(name)
+    if raw is None or raw.strip() == "":
+        return None
+    try:
+        return int(raw)
+    except ValueError as exc:
+        raise ConfigError(f"{name} moet een geheel getal zijn, kreeg: {raw!r}") from exc
 
 
 def _env_int(name: str, default: int) -> int:
@@ -71,7 +84,11 @@ class Config:
     icloud_auth_wait_seconds: int = 1800  # hoe lang wachten op een tweestapscode
     icloud_download_timeout: int = 14400  # maximale duur van een download
     icloud_extra_args: str = ""
-    icloud_library: str = ""  # leeg = persoonlijke bibliotheek (PrimarySync)
+    # Welke iCloud-bibliotheken gedownload worden (namen uit 'icloudpd --list-libraries', bv. PrimarySync of
+    # SharedSync-...). Leeg = alleen de persoonlijke bibliotheek.
+    icloud_libraries: tuple[str, ...] = ()
+    # Wissen in iCloud: None = nooit (alleen kopiëren); N = na het downloaden alles wissen wat ouder is dan N dagen
+    icloud_keep_days: int | None = None
     icloud_web_port: int = 8080  # poort van de icloudpd-webpagina voor de tweestapscode
     # Publiek adres van die codepagina (eigen Traefik-route), waarnaar de webinterface linkt
     icloud_web_url: str = ""
@@ -79,7 +96,15 @@ class Config:
 
     # Planner: dagelijks op dit uur (lokale tijd van de container, stel TZ in)
     schedule_time: str = "12:00"
+    schedule_cron: str = ""  # indien ingevuld (5 velden) gaat dit voor op schedule_time
     schedule_enabled: bool = True
+
+    @property
+    def cron_expression(self) -> str:
+        if self.schedule_cron:
+            return self.schedule_cron
+        hour, minute = self.schedule_time.split(":")
+        return f"{int(minute)} {int(hour)} * * *"
 
     @property
     def icloud_enabled(self) -> bool:
@@ -121,11 +146,15 @@ class Config:
             icloud_auth_wait_seconds=_env_int("PI_ICLOUD_AUTH_WAIT_SECONDS", 1800),
             icloud_download_timeout=_env_int("PI_ICLOUD_DOWNLOAD_TIMEOUT_SECONDS", 14400),
             icloud_extra_args=os.environ.get("PI_ICLOUD_EXTRA_ARGS", "").strip(),
-            icloud_library=os.environ.get("PI_ICLOUD_LIBRARY", "").strip(),
+            icloud_libraries=tuple(
+                x.strip() for x in os.environ.get("PI_ICLOUD_LIBRARY", "").split(",") if x.strip()
+            ),
+            icloud_keep_days=_env_optional_int("PI_ICLOUD_KEEP_RECENT_DAYS"),
             icloud_web_port=_env_int("PI_ICLOUD_WEB_PORT", 8080),
             icloud_web_url=os.environ.get("PI_ICLOUD_WEB_URL", "").strip(),
             web_port=_env_int("PI_WEB_PORT", 8000),
             schedule_time=os.environ.get("PI_SCHEDULE_TIME", "12:00").strip() or "12:00",
+            schedule_cron=os.environ.get("PI_SCHEDULE_CRON", "").strip(),
             schedule_enabled=_env_bool("PI_SCHEDULE_ENABLED", True),
         )
         cfg.validate()
@@ -148,6 +177,12 @@ class Config:
                 raise ValueError
         except ValueError:
             raise ConfigError(f"PI_SCHEDULE_TIME moet UU:MM zijn, kreeg: {self.schedule_time!r}") from None
+        try:
+            parse_cron(self.cron_expression)
+        except CronError as exc:
+            raise ConfigError(f"ongeldige planning: {exc}") from None
+        if self.icloud_keep_days is not None and self.icloud_keep_days < 0:
+            raise ConfigError("het aantal dagen om in iCloud te bewaren mag niet negatief zijn")
         names = list(named)
         for i, a in enumerate(names):
             for b in names[i + 1 :]:

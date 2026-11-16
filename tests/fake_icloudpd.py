@@ -3,8 +3,11 @@
 {
   "auth": "ok" | "fail" | "hang",
   "downloads": {"Favorites": [{"name": "IMG_1.jpg", "src": "/pad/bron.jpg"}], "ALL": [...]},
-  "fail_album": "Favorites"          # optioneel: deze download eindigt met een fout
+  "fail_album": "Favorites",         # optioneel: deze download eindigt met een fout
+  "libraries": ["PrimarySync", "SharedSync-ABC"],   # uitvoer van --list-libraries
+  "libraries_fail": "has not finished indexing yet"  # optioneel: --list-libraries eindigt met deze fout
 }
+Met --library X wordt in "downloads" eerst op "X|album" gezocht (bv. "SharedSync-ABC|ALL").
 Elke aanroep wordt (als JSON-regel) toegevoegd aan het bestand uit FAKE_ICLOUD_LOG.
 """
 
@@ -37,6 +40,15 @@ if "--auth-only" in args:
     print("Authentication OK", flush=True)
     sys.exit(0)
 
+if "--list-libraries" in args:
+    if spec.get("libraries_fail"):
+        print(f"ERROR    library exception: Apple iCloud Photo Library {spec['libraries_fail']}", flush=True)
+        sys.exit(1)
+    print("INFO     Processing user: bram@example.com", flush=True)
+    for name in spec.get("libraries", ["PrimarySync"]):
+        print(name, flush=True)
+    sys.exit(0)
+
 if "--list-albums" in args:
     for name in spec.get("albums", ["All Photos", "Favorites"]):
         print(name, flush=True)
@@ -48,7 +60,12 @@ if spec.get("fail_album") == album:
     sys.exit(2)
 
 directory = Path(opt("--directory"))
-for entry in spec.get("downloads", {}).get(album, []):
+downloads = spec.get("downloads", {})
+library = opt("--library")
+entries = downloads.get(f"{library}|{album}") if library else None
+if entries is None:
+    entries = downloads.get(album, [])
+for entry in entries:
     target = directory / entry["name"]
     if target.exists():
         print(f"{target} already exists", flush=True)

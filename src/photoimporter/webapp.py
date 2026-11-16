@@ -14,8 +14,10 @@ from urllib.parse import parse_qs, urlparse
 
 from . import __version__
 from .config import Config
-from .icloud import STATE_KEY
+from .icloud import STATE_KEY, list_libraries
+from .runlog import ConsoleLog
 from .scheduler import Scheduler
+from .settings import SettingsError, SettingsManager
 from .store import Store
 
 INDEX = Path(__file__).parent / "web" / "index.html"
@@ -26,8 +28,21 @@ def _rows(rows) -> list[dict]:
 
 
 class WebApp:
-    def __init__(self, cfg: Config, store: Store, scheduler: Scheduler, host: str = "0.0.0.0", port: int = 8000):
+    def __init__(
+        self,
+        cfg: Config,
+        store: Store,
+        scheduler: Scheduler,
+        host: str = "0.0.0.0",
+        port: int = 8000,
+        settings: SettingsManager | None = None,
+    ):
         self.cfg, self.store, self.scheduler = cfg, store, scheduler
+        # planner en webinterface moeten dezelfde instellingen delen, anders wijzigt opslaan niets
+        self.settings = settings or scheduler.settings or SettingsManager(cfg, store)
+        scheduler.settings = self.settings
+        self._libraries_thread: threading.Thread | None = None
+        self._libraries_lock = threading.Lock()
         app = self
 
         class Handler(_Handler):
@@ -46,6 +61,38 @@ class WebApp:
     def stop(self) -> None:
         self._server.shutdown()
         self._server.server_close()
+
+    # --- instellingen -----------------------------------------------------------
+    def settings_payload(self) -> dict:
+        return {
+            "settings": self.settings.current(),
+            "schedule": self.settings.describe_schedule(),
+            "libraries": {**self.settings.known_libraries(), "busy": self.libraries_busy},
+            "icloud_configured": self.cfg.icloud_enabled,
+        }
+
+    @property
+    def libraries_busy(self) -> bool:
+        return bool(self._libraries_thread and self._libraries_thread.is_alive())
+
+    def refresh_libraries(self) -> bool:
+        """Start (op de achtergrond) het opvragen van de iCloud-bibliotheken. False als dat al bezig is."""
+        with self._libraries_lock:
+            if self.libraries_busy:
+                return False
+            self.settings.remember_libraries(None, "bezig met ophalen...")
+
+            def work() -> None:
+                cfg = self.settings.effective()
+                try:
+                    names, message = list_libraries(cfg, self.store, ConsoleLog())
+                except Exception as exc:  # nooit de webserver neerhalen
+                    names, message = None, f"onverwachte fout: {exc}"
+                self.settings.remember_libraries(names, message)
+
+            self._libraries_thread = threading.Thread(target=work, name="libraries", daemon=True)
+            self._libraries_thread.start()
+            return True
 
     # --- gegevens voor de API ------------------------------------------------
     def status(self) -> dict:
@@ -114,6 +161,10 @@ class _Handler(BaseHTTPRequestHandler):
             self._json(_rows(app.store.list_events(int(m.group(1)), after, 2000)))
         elif url.path == "/api/review":
             self._json(_rows(app.store.list_review(True)))
+        elif url.path == "/api/settings":
+            self._json(app.settings_payload())
+        elif url.path == "/api/schedule/preview":
+            self._json(app.settings.describe_schedule(expression=query.get("cron", [""])[0]))
         else:
             self._json({"error": "niet gevonden"}, 404)
 
@@ -125,6 +176,24 @@ class _Handler(BaseHTTPRequestHandler):
             if app.scheduler.trigger_now():
                 return self._json({"started": True}, 202)
             return self._json({"started": False, "error": "er loopt al een run"}, 409)
+        if self.path == "/api/settings":
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                data = json.loads(self.rfile.read(min(length, 65536)) or b"{}")
+                if not isinstance(data, dict):
+                    raise ValueError
+            except ValueError:
+                return self._json({"error": "ongeldige gegevens"}, 400)
+            try:
+                app.settings.update(data)
+            except SettingsError as exc:
+                return self._json({"error": str(exc)}, 422)
+            app.scheduler.reload()
+            return self._json(app.settings_payload())
+        if self.path == "/api/libraries/refresh":
+            if app.refresh_libraries():
+                return self._json({"started": True}, 202)
+            return self._json({"started": False, "error": "het ophalen is al bezig"}, 409)
         if m := re.fullmatch(r"/api/review/(\d+)/resolve", self.path):
             app.store.resolve_review(int(m.group(1)))
             return self._json({"ok": True})

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import os
 import queue
+import re
 import shlex
 import subprocess
 import threading
@@ -30,6 +31,11 @@ STEP = "1/6 iCloud downloaden"
 
 HINT_AFTER_SECONDS = 30  # zo lang zonder resultaat = vermoedelijk wacht icloudpd op een code
 STATE_KEY = "icloud_status"  # ok | wacht_op_code | fout | uit
+DEFAULT_LIBRARY = "PrimarySync"  # de persoonlijke bibliotheek: icloudpd gebruikt die zonder --library
+
+# Eén icloudpd tegelijk: ze delen de sessie (cookies) en de poort van de codepagina.
+ICLOUD_LOCK = threading.Lock()
+_LIBRARY_LINE = re.compile(r"^(PrimarySync|SharedSync-\S+)$")
 
 
 @dataclass
@@ -116,7 +122,7 @@ def run_process(
     return result
 
 
-def _base_command(cfg: Config) -> list[str]:
+def _base_command(cfg: Config, library: str | None = None) -> list[str]:
     cmd = shlex.split(cfg.icloud_command)
     cmd += [
         # globale opties
@@ -129,9 +135,9 @@ def _base_command(cfg: Config) -> list[str]:
         "--password", cfg.icloud_password,
         "--cookie-directory", str(cfg.cookie_dir),
     ]  # fmt: skip
-    if cfg.icloud_library:
+    if library and library != DEFAULT_LIBRARY:
         # bv. SharedSync-XXXX voor de gedeelde bibliotheek (zie 'icloudpd --list-libraries')
-        cmd += ["--library", cfg.icloud_library]
+        cmd += ["--library", library]
     return cmd
 
 
@@ -176,8 +182,16 @@ def authenticate(cfg: Config, store: Store | None, log) -> bool:
     return True
 
 
-def _download(cfg: Config, directory: Path, album: str | None, label: str, log) -> bool:
-    cmd = _base_command(cfg) + [
+def _download(
+    cfg: Config,
+    directory: Path,
+    album: str | None,
+    label: str,
+    log,
+    library: str | None = None,
+    keep_days: int | None = None,
+) -> bool:
+    cmd = _base_command(cfg, library) + [
         "--directory", str(directory),
         "--folder-structure", "none",
         "--set-exif-datetime",
@@ -185,6 +199,9 @@ def _download(cfg: Config, directory: Path, album: str | None, label: str, log) 
     ]  # fmt: skip
     if album:
         cmd += ["--album", album]
+    if keep_days is not None:
+        # na het downloaden wissen in iCloud, behalve wat de laatste N dagen genomen is
+        cmd += ["--keep-icloud-recent-days", str(keep_days)]
     if cfg.icloud_extra_args:
         cmd += shlex.split(cfg.icloud_extra_args)
 
@@ -204,6 +221,18 @@ def _download(cfg: Config, directory: Path, album: str | None, label: str, log) 
     return True
 
 
+def _download_library(cfg: Config, library: str | None, name: str, log) -> bool:
+    """Favorietenalbum en daarna alle foto's van één bibliotheek. Wissen gebeurt enkel in de tweede stap,
+    zodat een favoriet pas uit iCloud verdwijnt nadat hij ook in de favorietenmap is binnengehaald."""
+    suffix = f" [{name}]"
+    if not _download(cfg, cfg.source_favorites, cfg.icloud_favorites_album, "favorieten" + suffix, log, library):
+        log.warn(STEP, f"download 'overig' van {name} overgeslagen vanwege de fout hierboven")
+        return False
+    return _download(
+        cfg, cfg.source_other, None, "overig" + suffix, log, library, keep_days=cfg.icloud_keep_days
+    )
+
+
 def download_icloud(cfg: Config, store: Store, log, stats) -> bool:
     """Draait de volledige iCloud-stap. Geeft True als alles gelukt is (of niet van toepassing was)."""
     if not cfg.icloud_enabled:
@@ -221,13 +250,21 @@ def download_icloud(cfg: Config, store: Store, log, stats) -> bool:
     cfg.cookie_dir.mkdir(parents=True, exist_ok=True)
 
     total_before = _count_media(cfg.source_favorites) + _count_media(cfg.source_other)
-    ok = authenticate(cfg, store, log)
-    if ok:
-        ok = _download(cfg, cfg.source_favorites, cfg.icloud_favorites_album, "favorieten", log)
-    if ok:
-        ok = _download(cfg, cfg.source_other, None, "overig", log)
-    else:
-        log.warn(STEP, "volgende iCloud-downloads overgeslagen vanwege de fout hierboven")
+    libraries: tuple[str | None, ...] = cfg.icloud_libraries or (None,)
+    if cfg.icloud_keep_days is not None:
+        log.warn(
+            STEP,
+            f"wissen in iCloud staat AAN: wat ouder is dan {cfg.icloud_keep_days} dagen wordt na het "
+            "downloaden uit iCloud gewist (en dus ook van je iPhone)",
+        )
+    with ICLOUD_LOCK:
+        ok = authenticate(cfg, store, log)
+        if not ok:
+            log.warn(STEP, "iCloud-downloads overgeslagen vanwege de fout hierboven")
+        for library in libraries if ok else ():
+            name = library or DEFAULT_LIBRARY
+            if not _download_library(cfg, library, name, log):
+                ok = False
 
     stats.downloaded = max(
         0, _count_media(cfg.source_favorites) + _count_media(cfg.source_other) - total_before
@@ -246,18 +283,45 @@ def check_icloud(cfg: Config, log) -> int:
     cfg.cookie_dir.mkdir(parents=True, exist_ok=True)
     if not authenticate(cfg, None, log):
         return 1
-    cmd = _base_command(cfg) + ["--list-albums", "--directory", str(cfg.source_other)]
-    result = run_process(cmd, 300, log, "iCloud albums", [cfg.icloud_password])
-    if result.code != 0:
-        log.error("iCloud albums", "albums ophalen mislukt")
-        return 1
-    names = [line.strip() for line in result.lines]
-    if cfg.icloud_favorites_album not in names:
-        log.warn(
-            "iCloud albums",
-            f"album '{cfg.icloud_favorites_album}' staat niet in de lijst hierboven; "
-            "pas PI_ICLOUD_FAVORITES_ALBUM aan naar de exacte naam (bv. de Nederlandse)",
-        )
-        return 1
-    log.info("iCloud albums", f"album '{cfg.icloud_favorites_album}' gevonden")
-    return 0
+    status = 0
+    for library in cfg.icloud_libraries or (None,):
+        name = library or DEFAULT_LIBRARY
+        cmd = _base_command(cfg, library) + ["--list-albums", "--directory", str(cfg.source_other)]
+        result = run_process(cmd, 300, log, f"iCloud albums [{name}]", [cfg.icloud_password])
+        if result.code != 0:
+            log.error("iCloud albums", f"albums ophalen mislukt voor {name}")
+            status = 1
+            continue
+        names = [line.strip() for line in result.lines]
+        if cfg.icloud_favorites_album not in names:
+            log.warn(
+                "iCloud albums",
+                f"album '{cfg.icloud_favorites_album}' staat niet in de lijst van {name}; "
+                "pas de naam aan in Instellingen (bv. de Nederlandse naam)",
+            )
+            status = 1
+        else:
+            log.info("iCloud albums", f"album '{cfg.icloud_favorites_album}' gevonden in {name}")
+    return status
+
+
+def list_libraries(cfg: Config, store: Store | None, log) -> tuple[list[str] | None, str]:
+    """Vraagt aan iCloud welke bibliotheken er zijn. Geeft (lijst, melding); lijst is None bij een fout."""
+    if not cfg.icloud_enabled:
+        return None, "iCloud is niet ingesteld (gebruikersnaam en wachtwoord ontbreken)"
+    cfg.cookie_dir.mkdir(parents=True, exist_ok=True)
+    if not ICLOUD_LOCK.acquire(blocking=False):
+        return None, "er is al een iCloud-actie bezig (bv. een run); probeer het zo opnieuw"
+    try:
+        if not authenticate(cfg, store, log):
+            return None, "inloggen bij iCloud mislukt of tweestapscode niet op tijd ingevoerd"
+        cmd = _base_command(cfg) + ["--list-libraries", "--directory", str(cfg.source_other)]
+        result = run_process(cmd, 300, log, "iCloud bibliotheken", [cfg.icloud_password])
+    finally:
+        ICLOUD_LOCK.release()
+    found = [line.strip() for line in result.lines if _LIBRARY_LINE.match(line.strip())]
+    if result.code != 0 or not found:
+        errors = [ln for ln in result.lines if "ERROR" in ln or "exception" in ln.lower()]
+        reason = errors[-1].split("ERROR", 1)[-1].strip() if errors else "geen bibliotheken gevonden"
+        return None, f"bibliotheken ophalen mislukt: {reason}"
+    return found, f"{len(found)} bibliotheek/bibliotheken gevonden"

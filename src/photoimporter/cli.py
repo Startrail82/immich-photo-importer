@@ -15,6 +15,7 @@ from .icloud import check_icloud
 from .organizer import RunAlreadyActive, run_import
 from .runlog import ConsoleLog
 from .scheduler import Scheduler
+from .settings import SettingsManager
 from .store import Store
 
 
@@ -78,13 +79,14 @@ def immich_check(cfg: Config) -> int:
 def daemon(cfg: Config, web: bool = False) -> int:
     log = logging.getLogger("photoimporter")
     store = Store(cfg.data_dir / "photoimporter.db")
-    scheduler = Scheduler(cfg, store)
+    settings = SettingsManager(cfg, store)
+    scheduler = Scheduler(cfg, store, settings=settings)
     scheduler.start()
     app = None
     if web:
         from .webapp import WebApp
 
-        app = WebApp(cfg, store, scheduler, port=cfg.web_port)
+        app = WebApp(cfg, store, scheduler, port=cfg.web_port, settings=settings)
         app.start()
         log.info("webinterface luistert op poort %d", app.port)
     nxt = scheduler.next_run
@@ -128,17 +130,21 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "immich-check":
         return immich_check(cfg)
     if args.command == "icloud-check":
-        return check_icloud(cfg, ConsoleLog())
+        store = Store(cfg.data_dir / "photoimporter.db")
+        try:
+            return check_icloud(SettingsManager(cfg, store).effective(), ConsoleLog())
+        finally:
+            store.close()
     if args.command == "daemon":
         return daemon(cfg)
     if args.command == "serve":
         return daemon(cfg, web=True)
 
-    if args.dry_run:
-        cfg = cfg.with_dry_run(True)
-
     store = Store(cfg.data_dir / "photoimporter.db")
     try:
+        cfg = SettingsManager(cfg, store).effective()  # ook hier gelden de instellingen uit de webinterface
+        if args.dry_run:
+            cfg = cfg.with_dry_run(True)
         result = run_import(cfg, store, trigger="cli")
     except RunAlreadyActive:
         log.error("er loopt al een run, deze wordt niet gestart")

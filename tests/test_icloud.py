@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 from conftest import make_jpeg, needs_exiftool
 
+from photoimporter.icloud import ICLOUD_LOCK, _base_command, list_libraries
 from photoimporter.organizer import run_import
 
 FAKE = Path(__file__).parent / "fake_icloudpd.py"
@@ -48,15 +49,21 @@ def event_messages(store, run_id) -> str:
     return "\n".join(e["message"] for e in store.list_events(run_id))
 
 
-def test_library_option_is_passed_to_every_icloudpd_call(icloud):
+def test_shared_library_is_passed_to_icloudpd_but_primary_is_the_default(icloud):
     configure, calls, store, dirs, tmp = icloud
-    cfg = configure({"downloads": {}}, icloud_library="SharedSync-ABC")
+    cfg = configure({"downloads": {}}, icloud_libraries=("SharedSync-ABC",))
 
     run_import(cfg, store)
 
     auth, fav, other = calls()
-    for call in (auth, fav, other):
+    assert "--library" not in auth  # inloggen is niet bibliotheekspecifiek
+    for call in (fav, other):
         assert call[call.index("--library") + 1] == "SharedSync-ABC"
+
+    configure({"downloads": {}}, icloud_libraries=("PrimarySync",))
+    assert "--library" not in _base_command(
+        dataclasses.replace(cfg, icloud_libraries=("PrimarySync",)), "PrimarySync"
+    )
 
 
 def test_no_library_option_by_default(icloud):
@@ -66,6 +73,115 @@ def test_no_library_option_by_default(icloud):
     run_import(cfg, store)
 
     assert all("--library" not in call for call in calls())
+
+
+def test_several_libraries_are_downloaded_one_after_the_other(icloud):
+    configure, calls, store, dirs, tmp = icloud
+    cfg = configure({"downloads": {}}, icloud_libraries=("PrimarySync", "SharedSync-ABC"))
+
+    run_import(cfg, store)
+
+    auth, fav1, other1, fav2, other2 = calls()
+    assert "--auth-only" in auth
+    assert "--library" not in fav1 and "--library" not in other1
+    assert fav2[fav2.index("--library") + 1] == "SharedSync-ABC"
+    assert other2[other2.index("--library") + 1] == "SharedSync-ABC"
+    assert fav2[fav2.index("--album") + 1] == "Favorites"
+
+
+@needs_exiftool
+def test_photos_of_a_shared_library_are_sorted_and_favorites_marked(icloud):
+    configure, calls, store, dirs, tmp = icloud
+    fav = source(tmp, "g1.jpg", (200, 0, 0), "2025:03:04 10:00:00")
+    other = source(tmp, "g2.jpg", (0, 200, 0), "2025:03:05 10:00:00")
+    cfg = configure(
+        {
+            "downloads": {
+                "SharedSync-ABC|Favorites": [{"name": "IMG_G1.jpg", "src": fav}],
+                "SharedSync-ABC|ALL": [
+                    {"name": "IMG_G1.jpg", "src": fav},
+                    {"name": "IMG_G2.jpg", "src": other},
+                ],
+            }
+        },
+        icloud_libraries=("SharedSync-ABC",),
+    )
+
+    result = run_import(cfg, store)
+
+    assert result.status == "ok"
+    assert (dirs["target"] / "2025/2025_03/2025_03_04/IMG_G1.jpg.xmp").exists()
+    assert not (dirs["target"] / "2025/2025_03/2025_03_05/IMG_G2.jpg.xmp").exists()
+
+
+def test_keep_days_only_applies_to_the_all_photos_download(icloud):
+    configure, calls, store, dirs, tmp = icloud
+    cfg = configure({"downloads": {}}, icloud_keep_days=14)
+
+    result = run_import(cfg, store)
+
+    auth, fav, other = calls()
+    assert "--keep-icloud-recent-days" not in fav
+    assert other[other.index("--keep-icloud-recent-days") + 1] == "14"
+    assert "staat AAN" in event_messages(store, result.run_id)
+
+
+def test_nothing_is_deleted_in_icloud_by_default(icloud):
+    configure, calls, store, dirs, tmp = icloud
+    run_import(configure({"downloads": {}}), store)
+
+    assert all("--keep-icloud-recent-days" not in c and "--delete-after-download" not in c for c in calls())
+
+
+def test_no_deletion_when_the_favorites_download_fails(icloud):
+    configure, calls, store, dirs, tmp = icloud
+    cfg = configure({"downloads": {}, "fail_album": "Favorites"}, icloud_keep_days=14)
+
+    run_import(cfg, store)
+
+    assert len(calls()) == 2  # inloggen + favorieten; 'overig' (met wissen) is niet gestart
+
+
+def test_dry_run_never_starts_icloudpd(icloud):
+    configure, calls, store, dirs, tmp = icloud
+    cfg = configure({"downloads": {}}, icloud_keep_days=14).with_dry_run(True)
+
+    run_import(cfg, store)
+
+    assert calls() == []
+
+
+class _Log:
+    def info(self, *a, **k): ...
+    warn = error = info
+
+
+def test_list_libraries_returns_names(icloud):
+    configure, calls, store, dirs, tmp = icloud
+    cfg = configure({"libraries": ["PrimarySync", "SharedSync-ABC-123"]})
+
+    names, message = list_libraries(cfg, store, _Log())
+
+    assert names == ["PrimarySync", "SharedSync-ABC-123"]
+    assert "2" in message
+
+
+def test_list_libraries_reports_apple_error(icloud):
+    configure, calls, store, dirs, tmp = icloud
+    cfg = configure({"libraries_fail": "has not finished indexing yet"})
+
+    names, message = list_libraries(cfg, store, _Log())
+
+    assert names is None
+    assert "indexing" in message
+
+
+def test_list_libraries_refuses_when_icloud_is_busy(icloud):
+    configure, calls, store, dirs, tmp = icloud
+    cfg = configure({})
+    with ICLOUD_LOCK:
+        names, message = list_libraries(cfg, store, _Log())
+    assert names is None and "bezig" in message
 
 
 @needs_exiftool
