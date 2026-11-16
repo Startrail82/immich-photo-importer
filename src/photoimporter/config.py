@@ -7,7 +7,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 from .cron import CronError
-from .cron import parse as parse_cron
+from .cron import ensure_satisfiable
 
 
 class ConfigError(ValueError):
@@ -182,13 +182,19 @@ class Config:
         except ValueError:
             raise ConfigError(f"PI_SCHEDULE_TIME moet UU:MM zijn, kreeg: {self.schedule_time!r}") from None
         try:
-            parse_cron(self.cron_expression)
+            ensure_satisfiable(self.cron_expression)
         except CronError as exc:
             raise ConfigError(f"ongeldige planning: {exc}") from None
         if self.icloud_version not in ("original", "adjusted", "both"):
             raise ConfigError("PI_ICLOUD_VERSION moet original, adjusted of both zijn")
-        if self.icloud_keep_days is not None and self.icloud_keep_days < 0:
-            raise ConfigError("het aantal dagen om in iCloud te bewaren mag niet negatief zijn")
+        if self.icloud_keep_days is not None and self.icloud_keep_days < 1:
+            raise ConfigError(
+                "PI_ICLOUD_KEEP_RECENT_DAYS moet minstens 1 zijn: 0 wist alles uit iCloud "
+                "wat gedownload is (en dus ook van de iPhone)"
+            )
+        for name, value in (("PI_IMMICH_URL", self.immich_url), ("PI_ICLOUD_WEB_URL", self.icloud_web_url)):
+            if value and not value.strip().lower().startswith(("http://", "https://")):
+                raise ConfigError(f"{name} moet met http:// of https:// beginnen, kreeg: {value!r}")
         names = list(named)
         for i, a in enumerate(names):
             for b in names[i + 1 :]:

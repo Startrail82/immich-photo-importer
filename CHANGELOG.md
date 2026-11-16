@@ -2,6 +2,46 @@
 
 Every commit bumps the version (minor for features, patch for fixes).
 
+## 0.5.0
+
+- New command `photoimporter doctor [--json] [--offline]`: checks before a run whether it can
+  succeed — target folder (mounted and writable, free space), the three source folders, the data
+  folder and database, exiftool, icloudpd, the schedule with the next two runs, the "delete in
+  iCloud" setting and the Immich connection. It only reads: no files are moved, no iCloud action
+  is started and no settings are saved. Every line is `ok`, `let op` or `fout`; exit status 0
+  (nothing), 1 (warnings only) or 2 (the run cannot sort).
+
+## 0.4.5
+
+- `PI_ICLOUD_KEEP_RECENT_DAYS` below 1 is refused at startup, and a stored `keep_days` of 0 falls
+  back to 14 days. 0 means "delete everything from iCloud" and the settings tab already accepted
+  only 1..3650, so the environment variable was the one way to wipe a library.
+- A switch sent as text (`"false"`) is parsed as false instead of being true because a non-empty
+  string is truthy; the API answers 422 with the field name for anything it cannot read.
+- `PI_IMMICH_URL` and `PI_ICLOUD_WEB_URL` must start with `http://` or `https://`, so a typo shows
+  up at startup instead of after the first run has moved files.
+
+## 0.4.4
+
+- The web API rejects a bad `limit` or `after` (for example `?limit=abc`) with a 400 and a message
+  instead of closing the connection without an answer, and `?limit=-1` no longer returns every run
+  ever recorded.
+
+## 0.4.3
+
+- A schedule that is valid but never occurs (`0 0 31 2 *`) is now refused when you save it, with
+  an explanation, instead of being stored. Before this the planner thread crashed on it and no
+  automatic run ever happened again until the container was restarted.
+- The planner thread can no longer die from an unexpected error while planning: it logs and tries
+  again, and a "Run now" during that recovery is not lost.
+
+## 0.4.2
+
+- A run no longer stops when exiftool is missing or fails on a batch: the files are still sorted,
+  with the file date as the fallback, and the run reports `ok_met_fouten`. Before this a container
+  without exiftool sorted nothing at all, even though the file date was already the documented
+  fallback.
+
 ## 0.4.1
 
 - Docs/UI: corrected how edited versions interact with files that are already on the NAS.

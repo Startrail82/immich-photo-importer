@@ -30,6 +30,22 @@ def _rows(rows) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def _int_param(
+    query: dict[str, list[str]], name: str, default: int, minimum: int, maximum: int | None = None
+) -> int | None:
+    """Leest een geheel getal uit de query. None = ongeldig (het ontbreken geeft de standaard)."""
+    values = query.get(name)
+    if not values:
+        return default
+    try:
+        value = int(values[0])
+    except (TypeError, ValueError):
+        return None
+    if value < minimum or (maximum is not None and value > maximum):
+        return None
+    return value
+
+
 class WebApp:
     def __init__(
         self,
@@ -195,9 +211,14 @@ class _Handler(BaseHTTPRequestHandler):
         elif url.path == "/api/status":
             self._json(app.status())
         elif url.path == "/api/runs":
-            self._json(_rows(app.store.list_runs(int(query.get("limit", ["30"])[0]))))
+            limit = _int_param(query, "limit", 30, 1, 1000)
+            if limit is None:
+                return self._json({"error": "limit moet een geheel getal tussen 1 en 1000 zijn"}, 400)
+            self._json(_rows(app.store.list_runs(limit)))
         elif m := re.fullmatch(r"/api/runs/(\d+)/events", url.path):
-            after = int(query.get("after", ["0"])[0])
+            after = _int_param(query, "after", 0, 0)
+            if after is None:
+                return self._json({"error": "after moet een geheel getal van 0 of hoger zijn"}, 400)
             self._json(_rows(app.store.list_events(int(m.group(1)), after, 2000)))
         elif url.path == "/api/review":
             self._json(_rows(app.store.list_review(True)))

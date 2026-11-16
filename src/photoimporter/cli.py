@@ -10,6 +10,7 @@ import threading
 
 from . import __version__
 from .config import Config, ConfigError
+from .doctor import main as doctor_main
 from .immich import ImmichClient, ImmichError
 from .icloud import check_icloud
 from .organizer import RunAlreadyActive, run_import
@@ -117,6 +118,9 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("icloud-check", help="inloggen bij iCloud (incl. tweestapscode) en het favorietenalbum zoeken")
     sub.add_parser("daemon", help="planner starten: dagelijks automatisch uitvoeren")
     sub.add_parser("serve", help="planner en webinterface starten (dit draait in de container)")
+    doctor = sub.add_parser("doctor", help="controleren of de volgende run kan slagen (wijzigt niets)")
+    doctor.add_argument("--json", action="store_true", help="het resultaat als JSON")
+    doctor.add_argument("--offline", action="store_true", help="Immich niet via het netwerk controleren")
     args = parser.parse_args(argv)
 
     _setup_logging()
@@ -139,6 +143,18 @@ def main(argv: list[str] | None = None) -> int:
         return daemon(cfg)
     if args.command == "serve":
         return daemon(cfg, web=True)
+    if args.command == "doctor":
+        store = None
+        try:
+            store = Store(cfg.data_dir / "photoimporter.db")
+        except Exception as exc:  # noqa: BLE001 - doctor meldt dit zelf als probleem
+            log.warning("de database kon niet geopend worden (%s); de instellingen uit de webinterface zijn niet gelezen", exc)
+        try:
+            effective = SettingsManager(cfg, store).effective() if store else cfg
+            return doctor_main(effective, store=store, as_json=args.json, network=not args.offline)
+        finally:
+            if store is not None:
+                store.close()
 
     store = Store(cfg.data_dir / "photoimporter.db")
     try:

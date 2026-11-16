@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+from collections.abc import Callable
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -24,6 +25,10 @@ class ExifToolError(RuntimeError):
     pass
 
 
+class ExifToolMissing(ExifToolError):
+    """exiftool is niet geïnstalleerd of niet uitvoerbaar: elke batch zal opnieuw mislukken."""
+
+
 def parse_exif_datetime(value: object, now: datetime | None = None) -> datetime | None:
     """Zet een EXIF-datumtekst om naar een datetime, of None als hij onbruikbaar is."""
     if not isinstance(value, str):
@@ -32,7 +37,7 @@ def parse_exif_datetime(value: object, now: datetime | None = None) -> datetime 
     if not match:
         return None
     year, month, day, hour, minute, second = (int(g) for g in match.groups())
-    if year < 1970:  # o.a. "0000:00:00 00:00:00"
+    if year < 1970:  # o.a. "0000:00:00 00:00:00"; een camera met lege batterij schrijft 1970
         return None
     try:
         result = datetime(year, month, day, hour, minute, second)
@@ -45,13 +50,31 @@ def parse_exif_datetime(value: object, now: datetime | None = None) -> datetime 
 
 
 def read_exif_dates(
-    paths: list[Path], exiftool: str = "exiftool", chunk_size: int = 200
+    paths: list[Path],
+    exiftool: str = "exiftool",
+    chunk_size: int = 200,
+    on_error: Callable[[ExifToolError, list[Path]], object] | None = None,
 ) -> dict[Path, tuple[datetime, str] | None]:
-    """Leest per bestand de beste EXIF-datum. Waarde None = geen bruikbare datum."""
+    """Leest per bestand de beste EXIF-datum. Waarde None = geen bruikbare datum.
+
+    Zonder `on_error` stopt een fout in één batch het hele lezen (met ExifToolError). Met
+    `on_error` worden de bestanden van die batch als 'geen EXIF-datum' teruggegeven en gaat het
+    lezen door; geeft de callback een waarde terug die waar is, dan stopt het lezen (handig als
+    exiftool zelf ontbreekt: elke volgende batch zou toch mislukken).
+    """
     results: dict[Path, tuple[datetime, str] | None] = {}
     for start in range(0, len(paths), chunk_size):
         batch = paths[start : start + chunk_size]
-        results.update(_read_batch(batch, exiftool))
+        try:
+            results.update(_read_batch(batch, exiftool))
+        except ExifToolError as exc:
+            if on_error is None:
+                raise
+            results.update(dict.fromkeys(batch, None))
+            if on_error(exc, batch):
+                break
+    for path in paths:  # elk gevraagd bestand staat in het resultaat
+        results.setdefault(path, None)
     return results
 
 
@@ -71,7 +94,9 @@ def _read_batch(
     try:
         proc = subprocess.run(cmd, input=stdin, capture_output=True, check=False)
     except FileNotFoundError as exc:
-        raise ExifToolError("exiftool is niet gevonden (is het geinstalleerd?)") from exc
+        raise ExifToolMissing("exiftool is niet gevonden (is het geinstalleerd?)") from exc
+    except OSError as exc:  # bv. geen rechten om het programma uit te voeren
+        raise ExifToolMissing(f"exiftool kan niet gestart worden: {exc}") from exc
 
     stdout = proc.stdout.decode("utf-8", errors="replace").strip()
     if not stdout:
