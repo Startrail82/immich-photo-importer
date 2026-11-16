@@ -18,9 +18,12 @@ from .cron import CronError, describe, parse
 from .store import Store
 
 KEY = "settings"
+KEY_SECRETS = "secrets"  # apart bewaard: wachtwoord en API-sleutel komen nooit in een API-antwoord
 KEY_LIBRARIES = "known_libraries"
+SECRET_FIELDS = ("icloud_password", "immich_api_key")
 DEFAULT_KEEP_DAYS = 14
 # Moet met een letter of cijfer beginnen: een naam als "--optie" mag nooit als commando-optie gelezen worden.
+_URL = re.compile(r"^https?://\S+$")
 _LIBRARY_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$")
 
 
@@ -44,7 +47,27 @@ class SettingsManager:
             "favorites_album": b.icloud_favorites_album,
             "delete_enabled": b.icloud_keep_days is not None,
             "keep_days": b.icloud_keep_days if b.icloud_keep_days is not None else DEFAULT_KEEP_DAYS,
+            "icloud_username": b.icloud_username,
+            "icloud_web_url": b.icloud_web_url,
+            "immich_url": b.immich_url,
         }
+
+    def _secrets(self) -> dict:
+        """Bewaarde geheimen, met de omgevingsvariabelen als terugval."""
+        values = {"icloud_password": self._base.icloud_password, "immich_api_key": self._base.immich_api_key}
+        raw = self._store.get_state(KEY_SECRETS, "")
+        try:
+            stored = json.loads(raw) if raw else {}
+        except ValueError:
+            stored = {}
+        for key in SECRET_FIELDS:
+            if stored.get(key):
+                values[key] = stored[key]
+        return values
+
+    def secret_flags(self) -> dict:
+        secrets = self._secrets()
+        return {f"{key}_set": bool(secrets[key]) for key in SECRET_FIELDS}
 
     def current(self) -> dict:
         values = self.defaults()
@@ -69,7 +92,29 @@ class SettingsManager:
             icloud_libraries=() if libs == ("PrimarySync",) else libs,
             icloud_favorites_album=s["favorites_album"],
             icloud_keep_days=int(s["keep_days"]) if s["delete_enabled"] else None,
+            icloud_username=s["icloud_username"],
+            icloud_web_url=s["icloud_web_url"],
+            immich_url=s["immich_url"],
+            **self._secrets(),
         )
+
+    def with_overrides(self, form: dict) -> Config:
+        """De instellingen zoals ze nu zijn, met de (nog onbewaarde) waarden uit het formulier erover.
+        Een leeg geheim in het formulier betekent: gebruik het bewaarde geheim."""
+        cfg = self.effective()
+        changes: dict = {}
+        for field, key in (("icloud_username", "icloud_username"), ("immich_url", "immich_url")):
+            if field in form:
+                changes[key] = str(form[field]).strip()
+        if "favorites_album" in form and str(form["favorites_album"]).strip():
+            changes["icloud_favorites_album"] = str(form["favorites_album"]).strip()
+        for key in SECRET_FIELDS:
+            if str(form.get(key) or "").strip():
+                changes[key] = str(form[key]).strip()
+        libs = form.get("libraries")
+        if isinstance(libs, list) and libs and all(isinstance(x, str) and _LIBRARY_NAME.match(x) for x in libs):
+            changes["icloud_libraries"] = () if tuple(libs) == ("PrimarySync",) else tuple(libs)
+        return replace(cfg, **changes)
 
     def known_libraries(self) -> dict:
         raw = self._store.get_state(KEY_LIBRARIES, "")
@@ -135,5 +180,28 @@ class SettingsManager:
                 if not 1 <= days <= 3650:
                     raise SettingsError("het aantal dagen om in iCloud te bewaren moet tussen 1 en 3650 liggen")
                 new["keep_days"] = days
+            for field in ("icloud_username", "icloud_web_url", "immich_url"):
+                if field in data:
+                    value = str(data[field]).strip()
+                    if len(value) > 300:
+                        raise SettingsError(f"{field}: waarde is te lang")
+                    if field.endswith("_url") and value and not _URL.match(value):
+                        raise SettingsError(f"{field}: moet beginnen met http:// of https://")
+                    new[field] = value
+            secrets_update = {}
+            for key in SECRET_FIELDS:
+                value = str(data.get(key) or "").strip()
+                if value:  # leeg = bewaarde waarde behouden
+                    if len(value) > 500:
+                        raise SettingsError(f"{key}: waarde is te lang")
+                    secrets_update[key] = value
             self._store.set_state(KEY, json.dumps(new))
+            if secrets_update:
+                raw = self._store.get_state(KEY_SECRETS, "")
+                try:
+                    stored = json.loads(raw) if raw else {}
+                except ValueError:
+                    stored = {}
+                stored.update(secrets_update)
+                self._store.set_state(KEY_SECRETS, json.dumps(stored))
             return new

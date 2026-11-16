@@ -4,8 +4,9 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "photoimporter"
-version = "0.1.0"
-description = "Haalt foto's van iCloud, sorteert ze op datum en geeft favorieten door aan Immich"
+version = "0.3.0"
+license = { text = "MIT" }
+description = "Downloads photos from iCloud, sorts them by date and passes favorites on to Immich"
 requires-python = ">=3.12"
 dependencies = []
 

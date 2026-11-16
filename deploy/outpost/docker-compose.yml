@@ -1,18 +1,18 @@
-# Authentik proxy-outpost voor utility-gpu (Dockhand-stack "authentik-outpost", omgeving utility-gpu).
-# Variabelen zet je in Dockhand: AUTHENTIK_TOKEN (als secret).
-# De image-tag moet gelijk zijn aan die van de Authentik-server en -worker.
+# Authentik proxy outpost for the Docker host that runs the Photo Importer (manual deployment).
+# Set AUTHENTIK_TOKEN as a secret in your stack manager.
+# The image tag must match the version of your Authentik server and worker.
 services:
   authentik-outpost:
     image: ghcr.io/goauthentik/proxy:2026.8.4
     container_name: authentik-outpost
     restart: unless-stopped
     environment:
-      AUTHENTIK_HOST: https://auth.bluelight.one
+      AUTHENTIK_HOST: https://auth.example.com
       AUTHENTIK_INSECURE: "false"
       AUTHENTIK_TOKEN: ${AUTHENTIK_TOKEN}
     ports:
-      # Enkel op het LAN-adres van deze VM; Traefik (op utility) stuurt hierheen.
-      - "192.168.100.81:9000:9000"
+      # Bind to the LAN address of this host only; your reverse proxy forwards to it.
+      - "<docker-host-ip>:9000:9000"
     networks:
       - outpost
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sqlite3
 import threading
 from datetime import datetime, timedelta
@@ -67,6 +68,10 @@ class Store:
         with self._lock:
             self._conn.execute("PRAGMA journal_mode=WAL")
             self._conn.executescript(SCHEMA)
+        try:  # de database bevat (indien ingesteld) het iCloud-wachtwoord en de Immich-sleutel
+            os.chmod(db_path, 0o600)
+        except OSError:
+            pass  # bv. een bestandssysteem zonder rechten; het volume blijft privé
 
     def close(self) -> None:
         with self._lock:

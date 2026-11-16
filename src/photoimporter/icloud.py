@@ -35,6 +35,7 @@ DEFAULT_LIBRARY = "PrimarySync"  # de persoonlijke bibliotheek: icloudpd gebruik
 
 # Eén icloudpd tegelijk: ze delen de sessie (cookies) en de poort van de codepagina.
 ICLOUD_LOCK = threading.Lock()
+_LOG_LINE = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} ")
 _LIBRARY_LINE = re.compile(r"^(PrimarySync|SharedSync-\S+)$")
 
 
@@ -334,3 +335,69 @@ def list_libraries(cfg: Config, store: Store | None, log) -> tuple[list[str] | N
         reason = errors[-1].split("ERROR", 1)[-1].strip() if errors else "geen bibliotheken gevonden"
         return None, f"bibliotheken ophalen mislukt: {reason}"
     return found, f"{len(found)} bibliotheek/bibliotheken gevonden"
+
+
+def probe_icloud(cfg: Config, store: Store | None, log) -> dict:
+    """Voor de knop 'Test iCloud': inloggen, bibliotheken tonen en het favorietenalbum zoeken.
+    Wijzigt niets. Wacht zo nodig op de tweestapscode (zie de codepagina)."""
+    from .checks import _Steps
+
+    steps = _Steps()
+    missing = [n for n, v in (("gebruikersnaam", cfg.icloud_username), ("wachtwoord", cfg.icloud_password)) if not v]
+    if not steps.add("Gegevens", not missing, "alles ingevuld" if not missing else "ontbreekt: " + ", ".join(missing)):
+        return steps.result()
+    cfg.cookie_dir.mkdir(parents=True, exist_ok=True)
+    if not ICLOUD_LOCK.acquire(blocking=False):
+        steps.add("iCloud vrij", False, "er is al een iCloud-actie bezig (bv. een run); probeer het zo opnieuw")
+        return steps.result()
+    try:
+        if not authenticate(cfg, store, log):
+            if store is not None:
+                store.set_state(STATE_KEY, "fout")
+            steps.add(
+                "Inloggen",
+                False,
+                "mislukt, of de tweestapscode is niet op tijd ingevoerd (zie het log voor de reden)",
+            )
+            return steps.result()
+        if store is not None:
+            store.set_state(STATE_KEY, "ok")
+        steps.add(
+            "Inloggen",
+            True,
+            "gelukt (bij een nog geldige sessie controleert Apple het wachtwoord niet opnieuw)",
+        )
+
+        listing = run_process(
+            _base_command(cfg) + ["--list-libraries", "--directory", str(cfg.source_other)],
+            300, log, "iCloud test", [cfg.icloud_password],
+        )  # fmt: skip
+        found = [ln.strip() for ln in listing.lines if _LIBRARY_LINE.match(ln.strip())]
+        if listing.code != 0 or not found:
+            errors = [ln for ln in listing.lines if "ERROR" in ln or "exception" in ln.lower()]
+            reason = errors[-1].split("ERROR", 1)[-1].strip() if errors else "geen bibliotheken gevonden"
+            steps.add("Bibliotheken", False, reason)
+            return steps.result()
+        steps.add("Bibliotheken", True, ", ".join(found))
+
+        for library in cfg.icloud_libraries or (DEFAULT_LIBRARY,):
+            if library not in found:
+                steps.add(f"Bibliotheek {library}", False, "bestaat niet in dit account")
+                continue
+            albums = run_process(
+                _base_command(cfg, library) + ["--list-albums", "--directory", str(cfg.source_other)],
+                300, log, "iCloud test", [cfg.icloud_password],
+            )  # fmt: skip
+            names = [ln.strip() for ln in albums.lines]
+            ok = albums.code == 0 and cfg.icloud_favorites_album in names
+            steps.add(
+                f"Favorietenalbum in {library}",
+                ok,
+                f"'{cfg.icloud_favorites_album}' gevonden"
+                if ok
+                else f"'{cfg.icloud_favorites_album}' niet gevonden; beschikbaar: "
+                + (", ".join(n for n in names if n and not _LOG_LINE.match(n) and n != "Albums:") or "geen"),
+            )
+    finally:
+        ICLOUD_LOCK.release()
+    return steps.result()

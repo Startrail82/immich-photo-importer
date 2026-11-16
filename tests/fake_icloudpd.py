@@ -44,7 +44,7 @@ if "--list-libraries" in args:
     if spec.get("libraries_fail"):
         print(f"ERROR    library exception: Apple iCloud Photo Library {spec['libraries_fail']}", flush=True)
         sys.exit(1)
-    print("INFO     Processing user: bram@example.com", flush=True)
+    print("INFO     Processing user: user@example.com", flush=True)
     for name in spec.get("libraries", ["PrimarySync"]):
         print(name, flush=True)
     sys.exit(0)

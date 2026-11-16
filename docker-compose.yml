@@ -1,5 +1,5 @@
-# Stack voor Dockhand op utility-gpu, aangemaakt vanuit deze Git-repo (compose-pad: docker-compose.yml).
-# De image wordt op de VM gebouwd uit deze repo. Variabelen (zie deploy/.env.example) zet je in Dockhand.
+# Docker stack for the Immich Photo Importer. The image is built from this repository.
+# Variables (see deploy/.env.example) are set in your stack manager (Dockhand, Portainer, .env, ...).
 services:
   immichphotoimporter:
     build:
@@ -7,28 +7,28 @@ services:
     image: immichphotoimporter:local
     container_name: immichphotoimporter
     restart: unless-stopped
-    # Zelfde eigenaar als de mappen op de NAS (1024:users), zodat nieuwe bestanden niet van root zijn.
-    user: "${PUID:-1024}:${PGID:-100}"
+    # Same owner as the folders on the NAS, so new files are not owned by root.
+    user: "${PUID:-1000}:${PGID:-1000}"
     environment:
-      TZ: Europe/Brussels
+      TZ: ${TZ:-Europe/Brussels}
       PI_SCHEDULE_TIME: "12:00"
-      # iCloud
-      PI_ICLOUD_USERNAME: ${ICLOUD_USERNAME}
-      PI_ICLOUD_PASSWORD: ${ICLOUD_PASSWORD}
+      # iCloud (can also be entered in the web UI: Settings > Connections)
+      PI_ICLOUD_USERNAME: ${ICLOUD_USERNAME:-}
+      PI_ICLOUD_PASSWORD: ${ICLOUD_PASSWORD:-}
       PI_ICLOUD_FAVORITES_ALBUM: ${ICLOUD_FAVORITES_ALBUM:-Favorites}
-      # Leeg = persoonlijke bibliotheek; SharedSync-... = gedeelde bibliotheek (icloudpd --list-libraries)
+      # Empty = personal library; SharedSync-... = shared library (icloudpd --list-libraries)
       PI_ICLOUD_LIBRARY: ${ICLOUD_LIBRARY:-}
-      PI_ICLOUD_WEB_URL: ${ICLOUD_WEB_URL}
-      # Immich (het pad is dat van Immich zelf)
-      PI_IMMICH_URL: ${IMMICH_URL}
-      PI_IMMICH_API_KEY: ${IMMICH_API_KEY}
-      PI_IMMICH_TARGET_PATH: /mnt/nfs/nas1/photo/Ongesorteerd
+      PI_ICLOUD_WEB_URL: ${ICLOUD_WEB_URL:-}
+      # Immich (the target path is the path as Immich itself sees it)
+      PI_IMMICH_URL: ${IMMICH_URL:-}
+      PI_IMMICH_API_KEY: ${IMMICH_API_KEY:-}
+      PI_IMMICH_TARGET_PATH: ${IMMICH_TARGET_PATH:?set IMMICH_TARGET_PATH, the sorted-photos folder as Immich sees it}
     volumes:
       - pi_data:/data
-      - /mnt/nfs/nas1/photo/Import:/import
-      - /mnt/nfs/nas1/photo/Ongesorteerd:/target
-    # Bewust GEEN gepubliceerde poorten: de app is enkel bereikbaar via de Authentik-outpost
-    # (container "authentik-outpost") op het gedeelde netwerk hieronder.
+      - ${IMPORT_DIR:?set IMPORT_DIR, the host folder containing iCloud/ and Inbox/}:/import
+      - ${TARGET_DIR:?set TARGET_DIR, the host folder for the sorted photos}:/target
+    # Deliberately NO published ports: the app is only reachable through the authentication proxy
+    # (container "authentik-outpost") on the shared network below. See deploy/DEPLOY.md.
     networks:
       - outpost
 

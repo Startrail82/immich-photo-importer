@@ -12,9 +12,12 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+from datetime import datetime
+
 from . import __version__
 from .config import Config
-from .icloud import STATE_KEY, list_libraries
+from .checks import check_immich
+from .icloud import STATE_KEY, list_libraries, probe_icloud
 from .runlog import ConsoleLog
 from .scheduler import Scheduler
 from .settings import SettingsError, SettingsManager
@@ -41,6 +44,8 @@ class WebApp:
         # planner en webinterface moeten dezelfde instellingen delen, anders wijzigt opslaan niets
         self.settings = settings or scheduler.settings or SettingsManager(cfg, store)
         scheduler.settings = self.settings
+        self._test_lock = threading.Lock()
+        self._icloud_test: dict = {"busy": False, "result": None, "at": ""}
         self._libraries_thread: threading.Thread | None = None
         self._libraries_lock = threading.Lock()
         app = self
@@ -65,11 +70,36 @@ class WebApp:
     # --- instellingen -----------------------------------------------------------
     def settings_payload(self) -> dict:
         return {
-            "settings": self.settings.current(),
+            "settings": {**self.settings.current(), **self.settings.secret_flags()},
             "schedule": self.settings.describe_schedule(),
             "libraries": {**self.settings.known_libraries(), "busy": self.libraries_busy},
-            "icloud_configured": self.cfg.icloud_enabled,
+            "icloud_configured": self.settings.effective().icloud_enabled,
+            "icloud_test": self.icloud_test_state(),
         }
+
+    # --- verbindingstests ----------------------------------------------------------
+    def icloud_test_state(self) -> dict:
+        with self._test_lock:
+            return dict(self._icloud_test)
+
+    def start_icloud_test(self, form: dict) -> bool:
+        """Start de iCloud-test op de achtergrond (inloggen kan op een tweestapscode wachten)."""
+        with self._test_lock:
+            if self._icloud_test["busy"]:
+                return False
+            self._icloud_test = {"busy": True, "result": None, "at": ""}
+        cfg = self.settings.with_overrides(form)
+
+        def work() -> None:
+            try:
+                result = probe_icloud(cfg, self.store, ConsoleLog())
+            except Exception as exc:  # nooit de webserver neerhalen
+                result = {"ok": False, "steps": [{"name": "Test", "ok": False, "message": f"onverwachte fout: {exc}"}]}
+            with self._test_lock:
+                self._icloud_test = {"busy": False, "result": result, "at": datetime.now().strftime("%Y-%m-%d %H:%M")}
+
+        threading.Thread(target=work, name="icloud-test", daemon=True).start()
+        return True
 
     @property
     def libraries_busy(self) -> bool:
@@ -101,15 +131,16 @@ class WebApp:
         if last and last.get("stats"):
             last["stats"] = json.loads(last["stats"])
         nxt = self.scheduler.next_run
+        eff = self.settings.effective()
         return {
             "version": __version__,
             "running": self.scheduler.running or bool(last and last["status"] == "bezig"),
             "next_run": nxt.strftime("%Y-%m-%d %H:%M") if nxt else None,
             "icloud_status": self.store.get_state(STATE_KEY, "onbekend"),
-            "icloud_busy": self.libraries_busy,
-            "icloud_configured": self.cfg.icloud_enabled,
-            "icloud_web_url": self.cfg.icloud_web_url,
-            "immich_configured": self.cfg.immich_enabled,
+            "icloud_busy": self.libraries_busy or self.icloud_test_state()["busy"],
+            "icloud_configured": eff.icloud_enabled,
+            "icloud_web_url": eff.icloud_web_url,
+            "immich_configured": eff.immich_enabled,
             "pending_favorites": len(self.store.list_pending_favorites()),
             "open_review": len(self.store.list_review(True)),
             "last_run": last,
@@ -132,6 +163,14 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def _read_json(self) -> dict | None:
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            data = json.loads(self.rfile.read(min(length, 65536)) or b"{}")
+        except ValueError:
+            return None
+        return data if isinstance(data, dict) else None
 
     def _same_origin(self) -> bool:
         origin = self.headers.get("Origin")
@@ -178,12 +217,8 @@ class _Handler(BaseHTTPRequestHandler):
                 return self._json({"started": True}, 202)
             return self._json({"started": False, "error": "er loopt al een run"}, 409)
         if self.path == "/api/settings":
-            try:
-                length = int(self.headers.get("Content-Length", "0"))
-                data = json.loads(self.rfile.read(min(length, 65536)) or b"{}")
-                if not isinstance(data, dict):
-                    raise ValueError
-            except ValueError:
+            data = self._read_json()
+            if data is None:
                 return self._json({"error": "ongeldige gegevens"}, 400)
             try:
                 app.settings.update(data)
@@ -191,6 +226,15 @@ class _Handler(BaseHTTPRequestHandler):
                 return self._json({"error": str(exc)}, 422)
             app.scheduler.reload()
             return self._json(app.settings_payload())
+        if self.path in ("/api/test/immich", "/api/test/icloud"):
+            form = self._read_json()
+            if form is None:
+                return self._json({"error": "ongeldige gegevens"}, 400)
+            if self.path.endswith("immich"):
+                return self._json(check_immich(app.settings.with_overrides(form)))
+            if app.start_icloud_test(form):
+                return self._json({"started": True}, 202)
+            return self._json({"started": False, "error": "de iCloud-test is al bezig"}, 409)
         if self.path == "/api/libraries/refresh":
             if app.refresh_libraries():
                 return self._json({"started": True}, 202)

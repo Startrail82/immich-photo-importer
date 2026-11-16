@@ -238,3 +238,43 @@ def test_stored_settings_json_is_plain(manager):
     mgr.update({"keep_days": 5})
     stored = json.loads(store.get_state("settings"))
     assert stored["keep_days"] == 5 and "password" not in json.dumps(stored).lower()
+
+
+# --- verbindingen -----------------------------------------------------------
+def _mgr(env):
+    from photoimporter.settings import SettingsManager
+
+    cfg, store, _dirs = env
+    return SettingsManager(cfg, store), store
+
+
+def test_connection_settings_override_env_and_secrets_are_kept_apart(env):
+    mgr, store = _mgr(env)
+    mgr.update({"icloud_username": "a@b.c", "icloud_password": "pw1", "immich_url": "https://i.example", "immich_api_key": "k1"})
+    eff = mgr.effective()
+    assert (eff.icloud_username, eff.icloud_password, eff.immich_url, eff.immich_api_key) == ("a@b.c", "pw1", "https://i.example", "k1")
+    assert "pw1" not in json.dumps(mgr.current()) and "k1" not in json.dumps(mgr.current())
+    assert mgr.secret_flags() == {"icloud_password_set": True, "immich_api_key_set": True}
+
+
+def test_empty_secret_keeps_stored_value(env):
+    mgr, _ = _mgr(env)
+    mgr.update({"icloud_password": "pw1"})
+    mgr.update({"icloud_password": "", "icloud_username": "x@y.z"})
+    assert mgr.effective().icloud_password == "pw1"
+
+
+def test_invalid_url_is_rejected(env):
+    from photoimporter.settings import SettingsError
+
+    mgr, _ = _mgr(env)
+    with pytest.raises(SettingsError):
+        mgr.update({"immich_url": "immich.example"})
+
+
+def test_with_overrides_uses_form_values_without_saving(env):
+    mgr, _ = _mgr(env)
+    mgr.update({"icloud_password": "bewaard"})
+    cfg = mgr.with_overrides({"icloud_username": "form@x.y", "icloud_password": "", "immich_api_key": "nieuw"})
+    assert cfg.icloud_username == "form@x.y" and cfg.icloud_password == "bewaard" and cfg.immich_api_key == "nieuw"
+    assert mgr.effective().immich_api_key != "nieuw"

@@ -209,3 +209,30 @@ def test_immich_check_wrong_key(env, fake):
 def test_immich_check_missing_settings(env):
     cfg, _store, _dirs = env
     assert immich_check(cfg) == 2
+
+
+# --- check_immich (knop 'Test Immich') ------------------------------------
+def test_check_immich_ok(env, fake):
+    from photoimporter.checks import check_immich
+
+    cfg, _store, _dirs = env
+    result = check_immich(immich_cfg(cfg, fake))
+    assert result["ok"] is True
+    assert any(s["name"] == "Externe bibliotheek" and s["ok"] for s in result["steps"])
+
+
+def test_check_immich_wrong_key_stops_with_clear_step(env, fake):
+    from photoimporter.checks import check_immich
+
+    cfg, _store, _dirs = env
+    result = check_immich(immich_cfg(cfg, fake, immich_api_key="fout"))
+    assert result["ok"] is False
+    assert "401" in result["steps"][-1]["message"]
+
+
+def test_check_immich_lists_missing_fields(env):
+    from photoimporter.checks import check_immich
+
+    cfg, _store, _dirs = env
+    result = check_immich(cfg)
+    assert result["ok"] is False and "URL" in result["steps"][0]["message"]

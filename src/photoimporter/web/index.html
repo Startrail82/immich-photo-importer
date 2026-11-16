@@ -70,7 +70,7 @@
   .panel[hidden] { display: none; }
   label.field { display: block; font-weight: 600; margin: 0 0 6px; }
   .hint { color: var(--muted); font-size: 13px; margin: 4px 0 0; font-weight: 400; }
-  input[type=text], input[type=number] { font: inherit; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--border);
+  input[type=text], input[type=password], input[type=number] { font: inherit; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--border);
     background: var(--card); color: var(--text); width: 100%; max-width: 420px; }
   input.mono { font-family: ui-monospace, Menlo, Consolas, monospace; }
   input[type=number] { width: 110px; }
@@ -140,6 +140,34 @@
   </div>
 
   <div class="panel" id="tab-settings" hidden>
+    <section class="card">
+      <h2>Verbindingen</h2>
+      <p class="hint" style="margin-top:0">Waarden die je hier opslaat, gaan v&oacute;or de omgevingsvariabelen in de stack. Wachtwoord en sleutel worden alleen bewaard en nooit meer getoond; laat een veld leeg om de bewaarde waarde te behouden.</p>
+      <h3>iCloud</h3>
+      <label class="field" for="sIcUser">Apple ID (gebruikersnaam)</label>
+      <input type="text" id="sIcUser" autocomplete="off" spellcheck="false">
+      <label class="field" for="sIcPass" style="margin-top:10px">Wachtwoord <span class="meta" id="sIcPassState"></span></label>
+      <input type="password" id="sIcPass" autocomplete="new-password">
+      <label class="field" for="sIcWeb" style="margin-top:10px">Adres van de codepagina (tweestapscode)</label>
+      <input type="text" id="sIcWeb" autocomplete="off" spellcheck="false" placeholder="https://icloud-code.example.com">
+      <div class="row" style="margin-top:12px">
+        <button class="ghost" id="testIcBtn">Test iCloud</button>
+        <span class="meta" id="testIcMsg"></span>
+      </div>
+      <div id="testIcOut"></div>
+      <h3 style="margin-top:20px">Immich</h3>
+      <label class="field" for="sImUrl">Adres van Immich</label>
+      <input type="text" id="sImUrl" autocomplete="off" spellcheck="false" placeholder="https://immich.example.com">
+      <label class="field" for="sImKey" style="margin-top:10px">API-sleutel <span class="meta" id="sImKeyState"></span></label>
+      <input type="password" id="sImKey" autocomplete="new-password">
+      <div class="row" style="margin-top:12px">
+        <button class="ghost" id="testImBtn">Test Immich</button>
+        <span class="meta" id="testImMsg"></span>
+      </div>
+      <div id="testImOut"></div>
+      <p class="hint">De tests gebruiken de waarden in dit formulier, ook als je ze nog niet hebt opgeslagen. Ze wijzigen niets.</p>
+    </section>
+
     <section class="card">
       <h2>Planning</h2>
       <label class="check"><input type="checkbox" id="sEnabled"><span>Automatisch uitvoeren volgens de planning
@@ -384,18 +412,66 @@ $("libBtn").onclick = async () => {
   pollLibs();
 };
 
+function secretState(set) { return set ? "(ingesteld)" : "(niet ingesteld)"; }
+function renderSteps(el, res) {
+  el.innerHTML = "";
+  for (const st of res.steps) {
+    const d = document.createElement("div");
+    d.className = "msg " + (st.ok ? "ok" : "bad");
+    d.textContent = (st.ok ? "\u2713 " : "\u2717 ") + st.name + ": " + st.message;
+    el.appendChild(d);
+  }
+}
+function connForm() {
+  return {
+    icloud_username: $("sIcUser").value, icloud_password: $("sIcPass").value, icloud_web_url: $("sIcWeb").value,
+    immich_url: $("sImUrl").value, immich_api_key: $("sImKey").value,
+    favorites_album: $("sAlbum").value, libraries: [...selLibs],
+  };
+}
+let testTimer;
+function renderIcTest(t) {
+  $("testIcBtn").disabled = !!t.busy;
+  $("testIcBtn").textContent = t.busy ? "Bezig met testen..." : "Test iCloud";
+  $("testIcMsg").textContent = t.busy ? "Wacht je op een code? Voer die in via de codepagina." : (t.at || "");
+  if (t.result) renderSteps($("testIcOut"), t.result);
+}
+async function pollIcTest() {
+  clearTimeout(testTimer);
+  const { data } = await api("/api/settings");
+  renderIcTest(data.icloud_test);
+  if (data.icloud_test.busy) testTimer = setTimeout(pollIcTest, 2000);
+}
+$("testIcBtn").onclick = async () => {
+  $("testIcBtn").disabled = true; $("testIcOut").innerHTML = "";
+  const r = await api("/api/test/icloud", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(connForm()) });
+  if (!r.ok && r.status !== 409) { $("testIcMsg").textContent = r.data.error || "Starten mislukt"; $("testIcBtn").disabled = false; return; }
+  pollIcTest();
+};
+$("testImBtn").onclick = async () => {
+  $("testImBtn").disabled = true; $("testImMsg").textContent = "Bezig..."; $("testImOut").innerHTML = "";
+  const r = await api("/api/test/immich", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(connForm()) });
+  $("testImBtn").disabled = false; $("testImMsg").textContent = "";
+  if (!r.ok) { $("testImMsg").textContent = r.data.error || "Test mislukt"; return; }
+  renderSteps($("testImOut"), r.data);
+};
+
 function fillSettings(d) {
   const s = d.settings;
   $("sEnabled").checked = s.schedule_enabled; $("sCron").value = s.schedule_cron;
   $("sAlbum").value = s.favorites_album; $("sDelete").checked = s.delete_enabled; $("sDays").value = s.keep_days;
   deleteWasOn = s.delete_enabled; $("sDeleteBox").hidden = !s.delete_enabled;
   selLibs.clear(); for (const n of s.libraries) selLibs.add(n);
+  $("sIcUser").value = s.icloud_username; $("sIcWeb").value = s.icloud_web_url; $("sImUrl").value = s.immich_url;
+  $("sIcPass").value = ""; $("sImKey").value = "";
+  $("sIcPassState").textContent = secretState(s.icloud_password_set); $("sImKeyState").textContent = secretState(s.immich_api_key_set);
   renderLibs(d.libraries); previewCron();
   if (d.libraries.busy) pollLibs();
+  if (d.icloud_test && d.icloud_test.busy) pollIcTest();
 }
 async function loadSettings() {
   const { data } = await api("/api/settings"); fillSettings(data);
-  if (!data.icloud_configured) $("libMsg").textContent = "iCloud is nog niet ingesteld (gebruikersnaam en wachtwoord in Dockhand).";
+  if (!data.icloud_configured) $("libMsg").textContent = "iCloud is nog niet ingesteld (vul de verbindingen hierboven in).";
 }
 $("sDelete").onchange = () => { $("sDeleteBox").hidden = !$("sDelete").checked; };
 
@@ -407,6 +483,8 @@ $("saveBtn").onclick = async () => {
   const body = {
     schedule_enabled: $("sEnabled").checked, schedule_cron: $("sCron").value, libraries: [...selLibs],
     favorites_album: $("sAlbum").value, delete_enabled: del, keep_days: $("sDays").value,
+    icloud_username: $("sIcUser").value, icloud_password: $("sIcPass").value, icloud_web_url: $("sIcWeb").value,
+    immich_url: $("sImUrl").value, immich_api_key: $("sImKey").value,
   };
   const r = await api("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   $("saveBtn").disabled = false;

@@ -1,133 +1,147 @@
 # Immich Photo Importer
 
-Haalt foto's en video's van iCloud (en uit een Inbox-map), sorteert ze op datum naar de
-Immich-bibliotheek op de NAS en geeft je iPhone-favorieten door als favoriet in Immich.
+Downloads photos and videos from iCloud (and from a drop folder), sorts them by date into an
+[Immich](https://immich.app) external library on your NAS, and passes your iPhone favorites on
+to Immich as favorites.
 
-Status: **alle stappen klaar** (kern, Immich, iCloud + planner, webinterface, Docker-stack).
-Installatie: zie [deploy/DEPLOY.md](deploy/DEPLOY.md).
+It ships as a single Docker container with a small web UI (status, counters, "needs attention"
+list, live log, settings, a "Run now" button). Installation: see [deploy/DEPLOY.md](deploy/DEPLOY.md).
+Changes per version: see [CHANGELOG.md](CHANGELOG.md).
 
-## Wat de kern doet
+## What a run does
 
-1. Scant drie bronmappen: `favorieten`, `overig` (iCloud) en `inbox` (zelf neergezette bestanden).
-2. Bepaalt de datum per bestand: EXIF/QuickTime-datum, anders de oudste van wijzigings- en
-   aanmaakdatum. Een video van een Live Photo volgt de datum van zijn foto.
-3. Verplaatst naar `<doelmap>/JAAR/JAAR_MM/JAAR_MM_DD/`.
-4. Identiek bestand (naam, grootte en hash) al aanwezig: het duplicaat wordt verwijderd.
-   Zelfde naam maar andere inhoud: het nieuwe bestand krijgt `_1`, `_2`, ... en een melding.
-5. Favorieten krijgen een sidecar `<bestand>.xmp` met `xmp:Rating="5"` en komen in de lijst
-   van favorieten die nog in Immich gemarkeerd moeten worden.
-6. Onbekende bestandstypes blijven staan en komen onder "aandacht nodig".
+1. Scans three source folders: `favorieten` (iCloud favorites album), `overig` (the rest of
+   iCloud) and `inbox` (files you drop in yourself).
+2. Determines each file's date: EXIF/QuickTime date, otherwise the older of the modification
+   and creation time. The video part of a Live Photo follows its photo's date.
+3. Moves it to `<target>/YYYY/YYYY_MM/YYYY_MM_DD/`.
+4. Identical file (name, size and hash) already present: the duplicate is removed. Same name but
+   different content: the new file gets `_1`, `_2`, ... and a notice.
+5. Favorites get a sidecar `<file>.xmp` with `xmp:Rating="5"` and are queued to be marked as
+   favorite in Immich.
+6. Unknown file types are left alone and listed under "needs attention".
 
-0. iCloud (optioneel, voor het sorteren): inloggen met `icloudpd --auth-only` (wacht zo nodig op
-   een tweestapscode via de icloudpd-webpagina), daarna het album Favorites naar `favorieten`
-   en alle foto's naar `overig`, met `--set-exif-datetime` en `--folder-structure none`. Mislukt
-   de login of de favorietendownload, dan wordt `overig` niet gedownload; de inbox wordt altijd
-   gesorteerd. Een favoriet zit ook in 'alle foto's': die tweede kopie wordt als identiek
-   duplicaat verwijderd en de favorietmarkering blijft behouden.
-7. Immich (optioneel, stap 5 van de run): start een scan van de externe bibliotheek, wacht tot
-   Immich de nieuwe favorieten kent (zoeken op bestandspad) en zet ze via de API op favoriet.
-   Favorieten die Immich nog niet kent blijven in de wachtrij voor de volgende run. Een foto
-   die al eens als favoriet is gemarkeerd, wordt niet opnieuw gemarkeerd. Haal je hem in
-   Immich zelf weer van favoriet, dan blijft dat zo.
+iCloud (optional): logs in with `icloudpd --auth-only` (waits for a two-factor code if needed, via
+icloudpd's own web page), then downloads the favorites album into `favorieten` and all photos into
+`overig`, with `--set-exif-datetime` and `--folder-structure none`. If login or the favorites
+download fails, `overig` is not downloaded; the inbox is always sorted. A favorite is also part
+of "all photos": that second copy is removed as an identical duplicate and the favorite flag is
+kept. Several iCloud libraries (for example the personal and the shared library) can be selected
+in the settings.
 
-Veiligheid: bestaat de doelmap niet (NAS niet gemount), dan stopt de run. Er loopt nooit
-meer dan een run tegelijk. In de Inbox worden te recent gewijzigde bestanden overgeslagen.
+Optionally, iCloud assets can be deleted after they have been downloaded (see the settings; off
+by default, and only items older than N days).
 
-## Gebruik
+Immich (optional): starts a scan of the external library, waits until Immich knows the new
+favorites (searching on file path) and marks them as favorite through the API. Favorites Immich
+does not know yet stay queued for the next run. A photo that was marked once is not marked again;
+if you un-favorite it in Immich, it stays that way.
+
+Safety: if the target folder does not exist (NAS not mounted) the run stops. Only one run at a
+time. In the inbox, recently modified files are skipped.
+
+## Usage (without Docker)
 
 ```
 pip install -e ".[dev]"
-photoimporter run --dry-run     # toont alleen wat er zou gebeuren
+photoimporter run --dry-run     # only shows what would happen
 photoimporter run
 ```
 
-Vereist `exiftool` (Debian/Ubuntu: `apt install libimage-exiftool-perl`).
+Requires `exiftool` (Debian/Ubuntu: `apt install libimage-exiftool-perl`) and, for iCloud,
+[`icloudpd`](https://github.com/icloud-photos-downloader/icloud_photos_downloader).
 
-## Configuratie (omgevingsvariabelen)
+## Commands
 
-| Variabele | Standaard | Betekenis |
+| Command | Purpose |
+|---|---|
+| `photoimporter run [--dry-run]` | one full run |
+| `photoimporter daemon` | scheduler only (cron expression), no web UI |
+| `photoimporter serve` | scheduler + web UI (the Docker default) |
+| `photoimporter icloud-check` | log in to iCloud and check the favorites album |
+| `photoimporter immich-check` | check the Immich connection step by step |
+
+## Web UI
+
+Two tabs. **Overview**: status, counters of the last run, the "needs attention" list, live log,
+earlier runs and the "Run now" button. **Settings**:
+
+- **Connections**: iCloud Apple ID, password, URL of the two-factor code page, Immich URL and API
+  key. Password and key are write-only (stored, never shown again). Two test buttons check iCloud
+  and Immich using the values in the form, even if not saved yet. Values saved here override the
+  environment variables, which remain the fallback.
+- **Planning**: a cron expression with a plain-language explanation and the next three runs.
+- **iCloud libraries**: fetch the list from your account and tick the libraries to download, plus
+  the name of the favorites album.
+- **Deleting in iCloud**: off by default. When on, assets older than N days are deleted from iCloud
+  after download. This also removes them from your iPhone (30 days in "Recently Deleted").
+
+There is deliberately no login of its own: put the UI behind a reverse proxy with authentication
+(see DEPLOY.md). Requests that change something are refused if their `Origin` does not match the
+host.
+
+## Configuration (environment variables)
+
+Most connection and schedule values can also be set in the web UI; the UI wins over these.
+
+| Variable | Default | Meaning |
 |---|---|---|
-| `PI_SOURCE_FAVORITES` | `/import/iCloud/favorieten` | iCloud-favorieten |
-| `PI_SOURCE_OTHER` | `/import/iCloud/overig` | rest van iCloud |
-| `PI_SOURCE_INBOX` | `/import/Inbox` | zelf neergezette bestanden |
-| `PI_TARGET` | `/target` | doelmap (Ongesorteerd) |
-| `PI_DATA_DIR` | `/data` | SQLite-datastore en lock |
-| `PI_MIN_AGE_INBOX_SECONDS` | `300` | Inbox: recent gewijzigde bestanden overslaan |
-| `PI_MIN_AGE_ICLOUD_SECONDS` | `0` | idem voor de iCloud-mappen |
-| `PI_LOG_RETENTION_DAYS` | `180` | logregels ouder dan dit worden opgeruimd |
-| `PI_DRY_RUN` | `false` | alleen tonen, niets wijzigen |
-| `PI_ICLOUD_USERNAME` | leeg | Apple ID; zonder gebruikersnaam en wachtwoord wordt iCloud overgeslagen |
-| `PI_ICLOUD_PASSWORD` of `PI_ICLOUD_PASSWORD_FILE` | leeg | wachtwoord (of pad naar een secret-bestand) |
-| `PI_ICLOUD_FAVORITES_ALBUM` | `Favorites` | exacte naam van het favorietenalbum (zie `icloud-check`) |
-| `PI_ICLOUD_COOKIE_DIR` | `<data>/icloud-cookies` | bewaart de iCloud-sessie; moet een volume zijn |
-| `PI_ICLOUD_AUTH_WAIT_SECONDS` | `1800` | hoe lang wachten op een tweestapscode |
-| `PI_ICLOUD_DOWNLOAD_TIMEOUT_SECONDS` | `14400` | maximale duur per download |
-| `PI_ICLOUD_WEB_PORT` | `8080` | poort waarop icloudpd de codepagina aanbiedt |
-| `PI_ICLOUD_COMMAND` / `PI_ICLOUD_EXTRA_ARGS` | `icloudpd` / leeg | uitvoerbaar bestand en extra opties |
-| `PI_WEB_PORT` | `8000` | poort van de webinterface |
-| `PI_ICLOUD_WEB_URL` | leeg | publiek adres van de icloudpd-codepagina; de knop 'Code invoeren' linkt hiernaar |
-| `PI_SCHEDULE_TIME` / `PI_SCHEDULE_ENABLED` | `12:00` / `true` | dagelijkse starttijd (lokale tijd, stel `TZ` in) |
-| `PI_IMMICH_URL` | leeg | bv. `https://immich.bluelight.one` |
-| `PI_IMMICH_API_KEY` of `PI_IMMICH_API_KEY_FILE` | leeg | API-sleutel, of pad naar een bestand met de sleutel (Docker secret) |
-| `PI_IMMICH_TARGET_PATH` | leeg | de doelmap zoals **Immich** hem ziet, bv. `/mnt/nfs/nas1/photo/Ongesorteerd` |
-| `PI_IMMICH_LIBRARY_ID` | leeg | optioneel; standaard wordt de bibliotheek gezocht op importpad |
-| `PI_IMMICH_WAIT_SECONDS` | `600` | hoe lang wachten tot Immich nieuwe bestanden kent |
-| `PI_IMMICH_POLL_SECONDS` | `15` | pauze tussen twee pogingen |
+| `PI_SOURCE_FAVORITES` | `/import/iCloud/favorieten` | iCloud favorites |
+| `PI_SOURCE_OTHER` | `/import/iCloud/overig` | rest of iCloud |
+| `PI_SOURCE_INBOX` | `/import/Inbox` | files you drop in yourself |
+| `PI_TARGET` | `/target` | target folder (the sorted tree) |
+| `PI_DATA_DIR` | `/data` | SQLite store and lock |
+| `PI_MIN_AGE_INBOX_SECONDS` | `300` | inbox: skip recently modified files |
+| `PI_MIN_AGE_ICLOUD_SECONDS` | `0` | same for the iCloud folders |
+| `PI_LOG_RETENTION_DAYS` | `180` | log lines older than this are pruned |
+| `PI_DRY_RUN` | `false` | only show, change nothing |
+| `PI_ICLOUD_USERNAME` | empty | Apple ID; without username and password iCloud is skipped |
+| `PI_ICLOUD_PASSWORD` or `PI_ICLOUD_PASSWORD_FILE` | empty | password (or path to a secret file) |
+| `PI_ICLOUD_FAVORITES_ALBUM` | `Favorites` | exact name of the favorites album (see `icloud-check`) |
+| `PI_ICLOUD_LIBRARY` | empty | comma-separated libraries; empty = personal library |
+| `PI_ICLOUD_KEEP_RECENT_DAYS` | unset | set = delete from iCloud what is older than N days |
+| `PI_ICLOUD_COOKIE_DIR` | `<data>/icloud-cookies` | keeps the iCloud session; must be a volume |
+| `PI_ICLOUD_AUTH_WAIT_SECONDS` | `1800` | how long to wait for a two-factor code |
+| `PI_ICLOUD_DOWNLOAD_TIMEOUT_SECONDS` | `14400` | maximum duration per download |
+| `PI_ICLOUD_WEB_PORT` | `8080` | port where icloudpd serves the code page |
+| `PI_ICLOUD_WEB_URL` | empty | public address of the code page; the "Enter code" button links here |
+| `PI_ICLOUD_COMMAND` / `PI_ICLOUD_EXTRA_ARGS` | `icloudpd` / empty | executable and extra options |
+| `PI_WEB_PORT` | `8000` | port of the web UI |
+| `PI_SCHEDULE_CRON` | empty | cron expression (5 fields); overrides the two below |
+| `PI_SCHEDULE_TIME` / `PI_SCHEDULE_ENABLED` | `12:00` / `true` | daily start time (local time, set `TZ`) |
+| `PI_IMMICH_URL` | empty | e.g. `https://immich.example.com` |
+| `PI_IMMICH_API_KEY` or `PI_IMMICH_API_KEY_FILE` | empty | API key, or path to a file holding it |
+| `PI_IMMICH_TARGET_PATH` | empty | the target folder as **Immich** sees it, e.g. `/mnt/photos/Unsorted` |
+| `PI_IMMICH_LIBRARY_ID` | empty | optional; by default the library is found by import path |
+| `PI_IMMICH_WAIT_SECONDS` | `600` | how long to wait until Immich knows new files |
+| `PI_IMMICH_POLL_SECONDS` | `15` | pause between two attempts |
 
-De Immich-koppeling is alleen actief als URL, sleutel en pad alle drie zijn ingesteld.
+The Immich link is only active when URL, key and target path are all set. The target path cannot
+be set in the UI because it depends on how Immich mounts your storage.
 
-### API-sleutel
+### Immich API key
 
-Maak in Immich een sleutel met de rechten `asset.read`, `asset.update`, `library.read` en
-`library.update` (Account Settings > API Keys). Controleer de verbinding met:
+Create a key with the permissions `asset.read`, `asset.update`, `library.read` and
+`library.update` (Account Settings > API Keys). Check the connection with the "Test Immich"
+button or with `photoimporter immich-check`. The tests deliberately do not exercise the write
+permissions, because that would change something; if they are missing, the first real run reports
+a clear error (HTTP 403) and the favorites stay queued.
+
+### First iCloud login
 
 ```
-photoimporter immich-check
+photoimporter icloud-check
 ```
 
-Dat commando test bereikbaarheid, leesrechten en of de bibliotheek gevonden wordt. De
-schrijfrechten (`asset.update`, `library.update`) test het bewust niet, want dat zou iets wijzigen;
-ontbreken ze, dan meldt de eerste echte run een duidelijke fout (HTTP 403) en blijven de
-favorieten in de wachtrij staan.
+Logs in, waits for the two-factor code (entered on icloudpd's web page, port 8080 in the
+container), shows whether the favorites album was found and stores the session in the cookie
+folder. Apple lets the session expire after roughly two months; the scheduler then waits for the
+code and reports that in the log and in the status (`icloud_status`). Give the code page its own
+route behind your authentication and set its address as the code-page URL, so the UI shows a
+button as soon as a run is waiting for the code.
 
 ## Tests
 
 ```
 pytest
 ```
-
-
-## Eerste keer inloggen bij iCloud
-
-```
-photoimporter icloud-check
-```
-
-Logt in, wacht op de tweestapscode (die voer je in via de webpagina van icloudpd op poort 8080
-van de container), toont of het favorietenalbum gevonden is en bewaart de sessie in de
-cookiemap. Apple laat de sessie na ongeveer twee maanden verlopen; de planner wacht dan tot de
-code ingevoerd wordt en meldt dat in het log en in de status (`icloud_status`).
-
-## Planner
-
-```
-photoimporter daemon
-```
-
-Draait elke dag op `PI_SCHEDULE_TIME` een volledige run, zonder webinterface.
-
-## Webinterface
-
-```
-photoimporter serve
-```
-
-Start de planner en de webinterface (poort `PI_WEB_PORT`, standaard 8000). Het is een kleine
-pagina in de stijl van Immich met: status, tellers van de laatste run, de lijst 'aandacht nodig'
-(bestandsdatum gebruikt, hernoemd, onbekend type, fouten), het live log van elke run, eerdere
-runs en de knop 'Nu uitvoeren'. Er is bewust geen eigen login; zet de pagina achter Traefik en
-Authentik. Verzoeken die iets wijzigen worden geweigerd als hun `Origin` niet bij de host past.
-
-De tweestapscode voer je in op de eigen pagina van icloudpd (poort 8080 in de container). Geef
-die een eigen Traefik-route achter Authentik en vul het adres in bij `PI_ICLOUD_WEB_URL`; de
-webinterface toont dan een melding met een knop zodra een run op de code wacht.

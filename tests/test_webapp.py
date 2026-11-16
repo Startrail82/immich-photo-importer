@@ -221,3 +221,37 @@ def test_status_reports_icloud_busy_while_libraries_are_fetched(web, monkeypatch
     assert json.loads(call(base + "/api/status")[1])["icloud_busy"] is True
     release.set()
     assert wait_for(lambda: json.loads(call(base + "/api/status")[1])["icloud_busy"] is False)
+
+
+def test_settings_api_never_returns_secrets(web):
+    base, *_ = web
+    status, data = post_json(base + "/api/settings", {"icloud_password": "topgeheim", "immich_api_key": "sleutel123"})
+    assert status == 200
+    raw = json.dumps(data)
+    assert "topgeheim" not in raw and "sleutel123" not in raw
+    assert data["settings"]["icloud_password_set"] is True
+    _, body = call(base + "/api/settings")
+    assert b"topgeheim" not in body and b"sleutel123" not in body
+
+
+def test_immich_test_endpoint_reports_missing_fields(web):
+    base, *_ = web
+    status, data = post_json(base + "/api/test/immich", {"immich_url": "", "immich_api_key": ""})
+    assert status == 200 and data["ok"] is False and data["steps"][0]["name"] == "Gegevens"
+
+
+def test_icloud_test_runs_in_background_and_result_is_polled(web, monkeypatch):
+    base, *_ = web
+    monkeypatch.setattr(
+        "photoimporter.webapp.probe_icloud",
+        lambda cfg, store, log: {"ok": True, "steps": [{"name": "Inloggen", "ok": True, "message": "gelukt"}]},
+    )
+    status, data = post_json(base + "/api/test/icloud", {"icloud_username": "a@b.c", "icloud_password": "x"})
+    assert status == 202 and data["started"] is True
+
+    def done():
+        _, body = call(base + "/api/settings")
+        t = json.loads(body)["icloud_test"]
+        return not t["busy"] and t["result"] is not None
+
+    assert wait_for(done)

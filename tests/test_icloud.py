@@ -26,7 +26,7 @@ def icloud(env, tmp_path, monkeypatch):
     def configure(spec: dict, **overrides):
         spec_file.write_text(json.dumps(spec))
         values = dict(
-            icloud_username="bram@example.com",
+            icloud_username="user@example.com",
             icloud_password="geheim-wachtwoord",
             icloud_command=f"{sys.executable} {FAKE}",
             icloud_auth_wait_seconds=30,
@@ -371,3 +371,41 @@ def test_icloud_check_finds_favorites_album(icloud):
     assert check_icloud(configure({"albums": ["Alle foto's", "Favorieten"]}), ConsoleLog()) == 1
     ok = configure({"albums": ["Alle foto's", "Favorieten"]}, icloud_favorites_album="Favorieten")
     assert check_icloud(ok, ConsoleLog()) == 0
+
+
+# --- probe_icloud (knop 'Test iCloud') ------------------------------------
+def test_probe_icloud_ok_finds_album_in_each_library(icloud):
+    from photoimporter.icloud import probe_icloud
+
+    configure, calls, store, dirs, tmp = icloud
+    cfg = configure({"libraries": ["PrimarySync", "SharedSync-X"]}, icloud_libraries=("SharedSync-X",))
+
+    result = probe_icloud(cfg, store, _Log())
+
+    assert result["ok"] is True
+    names = [s["name"] for s in result["steps"]]
+    assert "Favorietenalbum in SharedSync-X" in names
+
+
+def test_probe_icloud_reports_missing_album_with_alternatives(icloud):
+    from photoimporter.icloud import probe_icloud
+
+    configure, calls, store, dirs, tmp = icloud
+    cfg = configure({"albums": ["Favorieten"]}, icloud_favorites_album="Favorites")
+
+    result = probe_icloud(cfg, store, _Log())
+
+    assert result["ok"] is False
+    last = result["steps"][-1]
+    assert not last["ok"] and "Favorieten" in last["message"]
+
+
+def test_probe_icloud_requires_credentials(icloud):
+    from photoimporter.icloud import probe_icloud
+
+    configure, calls, store, dirs, tmp = icloud
+    cfg = configure({}, icloud_password="")
+
+    result = probe_icloud(cfg, store, _Log())
+
+    assert result["ok"] is False and "wachtwoord" in result["steps"][0]["message"]
