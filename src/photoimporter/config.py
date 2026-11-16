@@ -187,8 +187,14 @@ class Config:
             raise ConfigError(f"ongeldige planning: {exc}") from None
         if self.icloud_version not in ("original", "adjusted", "both"):
             raise ConfigError("PI_ICLOUD_VERSION moet original, adjusted of both zijn")
-        if self.icloud_keep_days is not None and self.icloud_keep_days < 0:
-            raise ConfigError("het aantal dagen om in iCloud te bewaren mag niet negatief zijn")
+        if self.icloud_keep_days is not None and self.icloud_keep_days < 1:
+            raise ConfigError(
+                "PI_ICLOUD_KEEP_RECENT_DAYS moet minstens 1 zijn: 0 wist alles uit iCloud "
+                "wat gedownload is (en dus ook van de iPhone)"
+            )
+        for name, value in (("PI_IMMICH_URL", self.immich_url), ("PI_ICLOUD_WEB_URL", self.icloud_web_url)):
+            if value and not value.strip().lower().startswith(("http://", "https://")):
+                raise ConfigError(f"{name} moet met http:// of https:// beginnen, kreeg: {value!r}")
         names = list(named)
         for i, a in enumerate(names):
             for b in names[i + 1 :]:

@@ -2,6 +2,16 @@
 
 Every commit bumps the version (minor for features, patch for fixes).
 
+## 0.4.5
+
+- `PI_ICLOUD_KEEP_RECENT_DAYS` below 1 is refused at startup, and a stored `keep_days` of 0 falls
+  back to 14 days. 0 means "delete everything from iCloud" and the settings tab already accepted
+  only 1..3650, so the environment variable was the one way to wipe a library.
+- A switch sent as text (`"false"`) is parsed as false instead of being true because a non-empty
+  string is truthy; the API answers 422 with the field name for anything it cannot read.
+- `PI_IMMICH_URL` and `PI_ICLOUD_WEB_URL` must start with `http://` or `https://`, so a typo shows
+  up at startup instead of after the first run has moved files.
+
 ## 0.4.4
 
 - The web API rejects a bad `limit` or `after` (for example `?limit=abc`) with a 400 and a message

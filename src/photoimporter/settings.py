@@ -8,6 +8,7 @@ zoals ze op het moment van starten zijn.
 from __future__ import annotations
 
 import json
+import logging
 import re
 import threading
 from dataclasses import replace
@@ -17,11 +18,16 @@ from .config import Config
 from .cron import CronError, describe, ensure_satisfiable
 from .store import Store
 
+log = logging.getLogger("photoimporter.settings")
+
 KEY = "settings"
 KEY_SECRETS = "secrets"  # apart bewaard: wachtwoord en API-sleutel komen nooit in een API-antwoord
 KEY_LIBRARIES = "known_libraries"
 SECRET_FIELDS = ("icloud_password", "immich_api_key")
 DEFAULT_KEEP_DAYS = 14
+MIN_KEEP_DAYS, MAX_KEEP_DAYS = 1, 3650
+_TRUE = {"1", "true", "yes", "ja", "on"}
+_FALSE = {"0", "false", "no", "nee", "off"}
 # Moet met een letter of cijfer beginnen: een naam als "--optie" mag nooit als commando-optie gelezen worden.
 _URL = re.compile(r"^https?://\S+$")
 _LIBRARY_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$")
@@ -29,6 +35,34 @@ _LIBRARY_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$")
 
 class SettingsError(ValueError):
     pass
+
+
+def _as_bool(value: object, field: str) -> bool:
+    """Leest een schakelaar uit een formulier.
+
+    `bool("false")` is True, dus een tekst die als 'uit' bedoeld is, zette de planning juist aan.
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int) and value in (0, 1):
+        return bool(value)
+    if isinstance(value, str) and value.strip().lower() in _TRUE | _FALSE:
+        return value.strip().lower() in _TRUE
+    raise SettingsError(f"{field}: gebruik true of false, kreeg {value!r}")
+
+
+def _valid_keep_days(value: object) -> int:
+    """Bewaarde dagwaarde; onbruikbaar of buiten bereik valt terug op de standaard (en nooit op 0)."""
+    try:
+        days = int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        days = 0
+    if not MIN_KEEP_DAYS <= days <= MAX_KEEP_DAYS:
+        log.warning(
+            "bewaarde instelling keep_days=%r is ongeldig; %d dagen wordt gebruikt", value, DEFAULT_KEEP_DAYS
+        )
+        return DEFAULT_KEEP_DAYS
+    return days
 
 
 class SettingsManager:
@@ -92,7 +126,7 @@ class SettingsManager:
             schedule_enabled=bool(s["schedule_enabled"]),
             icloud_libraries=() if libs == ("PrimarySync",) else libs,
             icloud_favorites_album=s["favorites_album"],
-            icloud_keep_days=int(s["keep_days"]) if s["delete_enabled"] else None,
+            icloud_keep_days=_valid_keep_days(s["keep_days"]) if s["delete_enabled"] else None,
             icloud_version=s["download_version"],
             icloud_username=s["icloud_username"],
             icloud_web_url=s["icloud_web_url"],
@@ -155,7 +189,7 @@ class SettingsManager:
                 except CronError as exc:
                     raise SettingsError(f"planning: {exc}") from None
             if "schedule_enabled" in data:
-                new["schedule_enabled"] = bool(data["schedule_enabled"])
+                new["schedule_enabled"] = _as_bool(data["schedule_enabled"], "schedule_enabled")
             if "libraries" in data:
                 libs = data["libraries"]
                 if not isinstance(libs, list) or not libs:
@@ -178,13 +212,13 @@ class SettingsManager:
                     raise SettingsError("de te downloaden versie moet original, adjusted of both zijn")
                 new["download_version"] = version
             if "delete_enabled" in data:
-                new["delete_enabled"] = bool(data["delete_enabled"])
+                new["delete_enabled"] = _as_bool(data["delete_enabled"], "delete_enabled")
             if "keep_days" in data:
                 try:
                     days = int(data["keep_days"])
                 except (TypeError, ValueError):
                     raise SettingsError("het aantal dagen moet een geheel getal zijn") from None
-                if not 1 <= days <= 3650:
+                if not MIN_KEEP_DAYS <= days <= MAX_KEEP_DAYS:
                     raise SettingsError("het aantal dagen om in iCloud te bewaren moet tussen 1 en 3650 liggen")
                 new["keep_days"] = days
             for field in ("icloud_username", "icloud_web_url", "immich_url"):
