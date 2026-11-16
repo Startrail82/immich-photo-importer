@@ -56,10 +56,28 @@ Requires `exiftool` (Debian/Ubuntu: `apt install libimage-exiftool-perl`) and, f
 | Command | Purpose |
 |---|---|
 | `photoimporter run [--dry-run]` | one full run |
+| `photoimporter doctor [--json] [--offline]` | check whether the next run can succeed (changes nothing) |
 | `photoimporter daemon` | scheduler only (cron expression), no web UI |
 | `photoimporter serve` | scheduler + web UI (the Docker default) |
 | `photoimporter icloud-check` | log in to iCloud and check the favorites album |
 | `photoimporter immich-check` | check the Immich connection step by step |
+
+### Checking a deployment (doctor)
+
+```
+photoimporter doctor              # one line per check
+photoimporter doctor --json       # the same as JSON
+photoimporter doctor --offline    # skip the Immich check (no network)
+```
+
+`doctor` only reads: it moves no files, starts no iCloud action and saves no settings. It checks
+the target folder (the classic failure: the NAS is not mounted, so a run stops immediately), the
+three source folders, the data folder and the database, exiftool, icloudpd (when iCloud is
+configured), the schedule, the "delete in iCloud" setting and the Immich connection.
+
+Each line is marked `ok`, `let op` (warning: the run works, with less result) or `fout` (error: the
+run cannot sort). Exit status: `0` nothing to report, `1` only warnings, `2` at least one error.
+
 
 ## Web UI
 

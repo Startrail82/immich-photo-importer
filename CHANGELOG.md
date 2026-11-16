@@ -2,6 +2,15 @@
 
 Every commit bumps the version (minor for features, patch for fixes).
 
+## 0.5.0
+
+- New command `photoimporter doctor [--json] [--offline]`: checks before a run whether it can
+  succeed — target folder (mounted and writable, free space), the three source folders, the data
+  folder and database, exiftool, icloudpd, the schedule with the next two runs, the "delete in
+  iCloud" setting and the Immich connection. It only reads: no files are moved, no iCloud action
+  is started and no settings are saved. Every line is `ok`, `let op` or `fout`; exit status 0
+  (nothing), 1 (warnings only) or 2 (the run cannot sort).
+
 ## 0.4.5
 
 - `PI_ICLOUD_KEEP_RECENT_DAYS` below 1 is refused at startup, and a stored `keep_days` of 0 falls
