@@ -71,6 +71,7 @@ class Config:
     icloud_auth_wait_seconds: int = 1800  # hoe lang wachten op een tweestapscode
     icloud_download_timeout: int = 14400  # maximale duur van een download
     icloud_extra_args: str = ""
+    icloud_library: str = ""  # leeg = persoonlijke bibliotheek (PrimarySync)
     icloud_web_port: int = 8080  # poort van de icloudpd-webpagina voor de tweestapscode
     # Publiek adres van die codepagina (eigen Traefik-route), waarnaar de webinterface linkt
     icloud_web_url: str = ""
@@ -120,6 +121,7 @@ class Config:
             icloud_auth_wait_seconds=_env_int("PI_ICLOUD_AUTH_WAIT_SECONDS", 1800),
             icloud_download_timeout=_env_int("PI_ICLOUD_DOWNLOAD_TIMEOUT_SECONDS", 14400),
             icloud_extra_args=os.environ.get("PI_ICLOUD_EXTRA_ARGS", "").strip(),
+            icloud_library=os.environ.get("PI_ICLOUD_LIBRARY", "").strip(),
             icloud_web_port=_env_int("PI_ICLOUD_WEB_PORT", 8080),
             icloud_web_url=os.environ.get("PI_ICLOUD_WEB_URL", "").strip(),
             web_port=_env_int("PI_WEB_PORT", 8000),

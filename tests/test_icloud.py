@@ -48,6 +48,26 @@ def event_messages(store, run_id) -> str:
     return "\n".join(e["message"] for e in store.list_events(run_id))
 
 
+def test_library_option_is_passed_to_every_icloudpd_call(icloud):
+    configure, calls, store, dirs, tmp = icloud
+    cfg = configure({"downloads": {}}, icloud_library="SharedSync-ABC")
+
+    run_import(cfg, store)
+
+    auth, fav, other = calls()
+    for call in (auth, fav, other):
+        assert call[call.index("--library") + 1] == "SharedSync-ABC"
+
+
+def test_no_library_option_by_default(icloud):
+    configure, calls, store, dirs, tmp = icloud
+    cfg = configure({"downloads": {}})
+
+    run_import(cfg, store)
+
+    assert all("--library" not in call for call in calls())
+
+
 @needs_exiftool
 def test_download_then_sort_favorite_and_other(icloud):
     configure, calls, store, dirs, tmp = icloud

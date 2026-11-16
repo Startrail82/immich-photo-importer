@@ -16,6 +16,8 @@ services:
       PI_ICLOUD_USERNAME: ${ICLOUD_USERNAME}
       PI_ICLOUD_PASSWORD: ${ICLOUD_PASSWORD}
       PI_ICLOUD_FAVORITES_ALBUM: ${ICLOUD_FAVORITES_ALBUM:-Favorites}
+      # Leeg = persoonlijke bibliotheek; SharedSync-... = gedeelde bibliotheek (icloudpd --list-libraries)
+      PI_ICLOUD_LIBRARY: ${ICLOUD_LIBRARY:-}
       PI_ICLOUD_WEB_URL: ${ICLOUD_WEB_URL}
       # Immich (het pad is dat van Immich zelf)
       PI_IMMICH_URL: ${IMMICH_URL}

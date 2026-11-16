@@ -129,6 +129,9 @@ def _base_command(cfg: Config) -> list[str]:
         "--password", cfg.icloud_password,
         "--cookie-directory", str(cfg.cookie_dir),
     ]  # fmt: skip
+    if cfg.icloud_library:
+        # bv. SharedSync-XXXX voor de gedeelde bibliotheek (zie 'icloudpd --list-libraries')
+        cmd += ["--library", cfg.icloud_library]
     return cmd
 
 
