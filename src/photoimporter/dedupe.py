@@ -16,7 +16,7 @@ from pathlib import Path
 
 from .media import classify
 
-_SUFFIX = re.compile(r"(_\d+|-\w+)$")
+_COPY = re.compile(r"(_\d{1,2}|-[A-Za-z]+(-\d+)?|-\d{5,})$")  # _1, _2, -adjusted, -1650727
 _BATCH = 200
 
 
@@ -45,10 +45,8 @@ def image_md5_many(paths: list[Path]) -> dict[Path, str]:
 
 
 def _clean_rank(path: Path) -> int:
-    """0 = nette naam (IMG_1234.JPG), 1 = naam met _1 of -adjusted achter de naam."""
-    return 1 if _SUFFIX.search(path.stem) and path.stem.count("_") + path.stem.count("-") > 0 and (
-        re.search(r"_\d+$", path.stem) or re.search(r"-[A-Za-z]+$", path.stem)
-    ) else 0
+    """0 = nette naam (IMG_1234.JPG), 1 = naam met kopie-achtervoegsel (_1, -adjusted, -1650727)."""
+    return 1 if _COPY.search(path.stem) else 0
 
 
 def sidecar_of(path: Path) -> Path:

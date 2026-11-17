@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import os
 import subprocess
 
 from conftest import make_jpeg, needs_exiftool
@@ -177,3 +178,15 @@ def test_find_duplicates_ignores_synology_metadata_folders(env):
     (d / "@eaDir").mkdir()
     (d / "@eaDir" / "IMG_1.JPG").write_bytes(a.read_bytes())
     assert find_duplicates(dirs["target"], lambda *_: None) == []
+
+
+@needs_exiftool
+def test_find_duplicates_keeps_the_clean_name_even_if_the_copy_is_older(env):
+    cfg, store, dirs = env
+    d = dirs["target"] / "2024" / "2024_01" / "2024_01_02"
+    plain = make_jpeg(d / "IMG_5357.JPG", (1, 2, 3), "2024:01:02 03:04:05")
+    copy = d / "IMG_5357_1.JPG"
+    copy.write_bytes(plain.read_bytes())
+    os.utime(copy, (1_000_000, 1_000_000))  # de kopie is ouder
+    groups = find_duplicates(dirs["target"], lambda *_: None)
+    assert groups[0].keep == plain and groups[0].remove == [copy]

@@ -2,6 +2,11 @@
 
 Every commit bumps the version (minor for features, patch for fixes).
 
+## 0.5.2
+
+- `find-duplicates`: a plain name such as `IMG_5357.JPG` is no longer mistaken for a numbered copy,
+  so the clean name is kept and `IMG_5357_1.JPG` is removed (not the other way round).
+
 ## 0.5.1
 
 - `find-duplicates`: skips Synology `@eaDir`/`#recycle` folders, accepts an optional folder
