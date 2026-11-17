@@ -261,20 +261,20 @@ def process_one(
     day_dir = cfg.target / f"{when:%Y}" / f"{when:%Y_%m}" / f"{when:%Y_%m_%d}"
     sha = sha256_of(item.path)
     known = store.get_imported(sha)
-    if known is not None and Path(known["target"]).exists():
-        # Dit bestand (zoals het binnenkwam) is al eerder verwerkt, ook al is de naam, de extensie of de
-        # dagmap nu anders, of is het bestand op de NAS inmiddels aangepast (bv. een ingebouwde rating).
-        dest, status, number = Path(known["target"]), "duplicate", 0
-        shown = dest.relative_to(cfg.target) if dest.is_relative_to(cfg.target) else dest
+    if known is not None:
+        # Ooit binnengehaald (hash zoals het uit iCloud/Inbox kwam): er is niets te doen, ook niet als het bestand
+        # inmiddels verplaatst, hernoemd, aangepast of verwijderd is.
+        dest = Path(known["target"])
+        present = dest.exists()
         verb = "zou verwijderd worden" if dry else "verwijderd"
-        log.info(prefix, f"{item.path.name}: al eerder binnengehaald als {shown}, duplicaat {verb}", item.path)
+        where = f"als {dest.relative_to(cfg.target) if dest.is_relative_to(cfg.target) else dest}" if present else "(inmiddels verplaatst of verwijderd)"
+        log.info(prefix, f"{item.path.name}: al eerder binnengehaald {where}, duplicaat {verb}", item.path)
         if not dry:
             item.path.unlink()
         stats.duplicates_removed += 1
-        _favorite_tail(item, dest, prefix, cfg, store, log, stats)
+        if present:
+            _favorite_tail(item, dest, prefix, cfg, store, log, stats)
         return
-    if known is not None:
-        log.warn(prefix, f"{item.path.name}: eerder binnengehaald maar niet meer aanwezig ({known['target']}), opnieuw geplaatst", item.path)
 
     twin = _same_image_twin(item.path, day_dir) if day_dir.is_dir() else None
     if twin is not None:

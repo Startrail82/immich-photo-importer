@@ -73,14 +73,27 @@ def test_favorite_duplicate_still_marks_pending_favorite(env):
 
 
 @needs_exiftool
-def test_missing_registered_target_is_placed_again(env):
+def test_moved_or_deleted_file_is_never_placed_again(env):
     cfg, store, dirs = env
     make_jpeg(dirs["other"] / "IMG_5.jpg", (3, 3, 3), "2024:05:06 07:08:09")
     run_import(cfg, store)
-    (day(dirs, 2024, 5, 6) / "IMG_5.jpg").unlink()
-    make_jpeg(dirs["other"] / "IMG_5.jpg", (3, 3, 3), "2024:05:06 07:08:09")
+    (day(dirs, 2024, 5, 6) / "IMG_5.jpg").rename(dirs["data"] / "ergens-anders.jpg")  # bewust verplaatst
+    again = make_jpeg(dirs["other"] / "IMG_5.jpg", (3, 3, 3), "2024:05:06 07:08:09")
+    result = run_import(cfg, store)
+    assert result.stats.duplicates_removed == 1
+    assert not again.exists()
+    assert not (day(dirs, 2024, 5, 6) / "IMG_5.jpg").exists()
+
+
+@needs_exiftool
+def test_same_file_dropped_in_inbox_is_a_duplicate(env):
+    cfg, store, dirs = env
+    first = make_jpeg(dirs["other"] / "IMG_7.jpg", (8, 8, 8), "2024:07:08 09:10:11")
+    data = first.read_bytes()
     run_import(cfg, store)
-    assert (day(dirs, 2024, 5, 6) / "IMG_5.jpg").exists()
+    (dirs["inbox"] / "handmatig.jpg").write_bytes(data)
+    result = run_import(cfg, store)
+    assert result.stats.duplicates_removed == 1
 
 
 @needs_exiftool

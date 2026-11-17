@@ -2,6 +2,11 @@
 
 Every commit bumps the version (minor for features, patch for fixes).
 
+## 0.5.4
+
+- A file whose hash is in the registry is never placed again, even if it was moved, renamed or
+  deleted on the target in the meantime. To re-add such a file, put it on the target by hand.
+
 ## 0.5.3
 
 - Removed the "newest N photos" option (`--recent`, `PI_ICLOUD_RECENT`) and the "Full synchronisation"

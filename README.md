@@ -17,7 +17,9 @@ Changes per version: see [CHANGELOG.md](CHANGELOG.md).
 3. Moves it to `<target>/YYYY/YYYY_MM/YYYY_MM_DD/`.
 4. Duplicate check. Every imported file is recorded in the database by its hash as it arrived. A
    file with a known hash is a duplicate, whatever its name, extension or folder, and even if the
-   copy on the NAS was modified afterwards (for example Immich embedding a rating). Without a
+   copy on the NAS was modified afterwards (for example Immich embedding a rating), moved or
+   deleted: a file that was imported once is never placed again. To re-add one, put it on the
+   target by hand. Without a
    record, a file in the same day folder whose image data (`exiftool` ImageDataHash) is identical
    is also a duplicate. Same name but really different content: the new file gets `_1`, `_2`, ...
    and a notice.
