@@ -91,47 +91,6 @@ def test_dry_run_records_nothing(env):
     assert store.count_imported() == 0
 
 
-def test_recent_is_used_only_after_a_successful_run(icloud):  # noqa: F811
-    configure, calls, store, dirs, tmp = icloud
-    cfg = configure({"downloads": {}}, icloud_recent=50)
-    run_import(cfg, store)
-    first_other = calls()[-1]
-    assert "--recent" not in first_other  # eerste keer: alles
-    run_import(cfg, store)
-    fav, other = calls()[-2], calls()[-1]
-    assert "--recent" not in fav
-    assert other[other.index("--recent") + 1] == "50"
-
-
-def test_full_sync_ignores_recent(icloud):  # noqa: F811
-    configure, calls, store, dirs, tmp = icloud
-    cfg = configure({"downloads": {}}, icloud_recent=50)
-    run_import(cfg, store)
-    run_import(dataclasses.replace(cfg, full_sync=True), store)
-    assert "--recent" not in calls()[-1]
-
-
-def test_recent_zero_means_everything(icloud):  # noqa: F811
-    configure, calls, store, dirs, tmp = icloud
-    cfg = configure({"downloads": {}}, icloud_recent=0)
-    run_import(cfg, store)
-    run_import(cfg, store)
-    assert "--recent" not in calls()[-1]
-
-
-def test_scheduler_passes_full_flag(env):
-    cfg, store, dirs = env
-    seen = []
-
-    class R:
-        run_id, status = 1, "ok"
-
-    sched = Scheduler(cfg, store, runner=lambda c, s, t: seen.append(c.full_sync) or R())
-    sched._run_once("handmatig", True)
-    sched._run_once("handmatig", False)
-    assert seen == [True, False]
-
-
 @needs_exiftool
 def test_find_duplicates_lists_first_and_deletes_only_with_apply(env, capsys):
     cfg, store, dirs = env
@@ -190,3 +149,11 @@ def test_find_duplicates_keeps_the_clean_name_even_if_the_copy_is_older(env):
     os.utime(copy, (1_000_000, 1_000_000))  # de kopie is ouder
     groups = find_duplicates(dirs["target"], lambda *_: None)
     assert groups[0].keep == plain and groups[0].remove == [copy]
+
+
+def test_every_run_reads_all_photos(icloud):  # noqa: F811
+    configure, calls, store, dirs, tmp = icloud
+    cfg = configure({"downloads": {}})
+    run_import(cfg, store)
+    run_import(cfg, store)
+    assert all("--recent" not in c for c in calls())

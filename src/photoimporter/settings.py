@@ -48,7 +48,6 @@ class SettingsManager:
             "delete_enabled": b.icloud_keep_days is not None,
             "keep_days": b.icloud_keep_days if b.icloud_keep_days is not None else DEFAULT_KEEP_DAYS,
             "download_version": b.icloud_version,
-            "recent_count": b.icloud_recent,
             "icloud_username": b.icloud_username,
             "icloud_web_url": b.icloud_web_url,
             "immich_url": b.immich_url,
@@ -95,7 +94,6 @@ class SettingsManager:
             icloud_favorites_album=s["favorites_album"],
             icloud_keep_days=int(s["keep_days"]) if s["delete_enabled"] else None,
             icloud_version=s["download_version"],
-            icloud_recent=int(s["recent_count"]),
             icloud_username=s["icloud_username"],
             icloud_web_url=s["icloud_web_url"],
             immich_url=s["immich_url"],
@@ -174,14 +172,6 @@ class SettingsManager:
                 if not album or len(album) > 120:
                     raise SettingsError("de naam van het favorietenalbum mag niet leeg zijn")
                 new["favorites_album"] = album
-            if "recent_count" in data:
-                try:
-                    recent = int(data["recent_count"])
-                except (TypeError, ValueError):
-                    raise SettingsError("het aantal recente foto's moet een geheel getal zijn") from None
-                if not 0 <= recent <= 1_000_000:
-                    raise SettingsError("het aantal recente foto's moet tussen 0 (alles) en 1.000.000 liggen")
-                new["recent_count"] = recent
             if "download_version" in data:
                 version = str(data["download_version"]).strip().lower()
                 if version not in ("original", "adjusted", "both"):

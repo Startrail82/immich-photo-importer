@@ -111,7 +111,6 @@
         <div class="meta" id="meta"></div>
       </div>
       <button id="runBtn">Nu uitvoeren</button>
-      <button id="fullBtn" class="secondary" title="Alle foto's uit iCloud opnieuw doorlopen, niet enkel de nieuwste">Volledige synchronisatie</button>
     </div>
   </section>
 
@@ -206,13 +205,6 @@
     </section>
 
     <section class="card">
-      <h2>Hoeveel foto's per run?</h2>
-      <label class="field" for="sRecent">Aantal recentste foto's per run (0 = alles)</label>
-      <input type="number" id="sRecent" min="0" max="1000000">
-      <p class="hint">Dagelijks hoef je enkel de nieuwste foto's te bekijken. De eerste run, een run met "Wissen in iCloud" aan en de knop "Volledige synchronisatie" lezen altijd alles. Het favorietenalbum wordt altijd volledig gelezen.</p>
-    </section>
-
-    <section class="card">
       <h2>Wissen in iCloud</h2>
       <label class="check"><input type="checkbox" id="sDelete"><span>Na het downloaden ook uit iCloud wissen
         <small>Uit = alleen kopi&euml;ren; er wordt nooit iets in iCloud gewist.</small></span></label>
@@ -264,7 +256,7 @@ function renderStatus(s) {
   bits.push("Immich: " + (s.immich_configured ? "gekoppeld" : "niet ingesteld"));
   if (s.pending_favorites) bits.push(s.pending_favorites + " favoriet(en) in wachtrij");
   $("meta").textContent = bits.join("  ·  ");
-  $("runBtn").disabled = s.running; $("fullBtn").disabled = s.running;
+  $("runBtn").disabled = s.running;
   $("runBtn").textContent = s.running ? "Run bezig..." : "Nu uitvoeren";
   const mfa = s.icloud_status === "wacht_op_code" && (s.running || s.icloud_busy);
   $("mfa").style.display = mfa ? "flex" : "none";
@@ -351,12 +343,9 @@ async function refresh() {
   } catch (e) { $("state").textContent = "Geen verbinding"; $("dot").className = "dot err"; }
 }
 
-$("fullBtn").onclick = () => startRun(true);
-$("runBtn").onclick = () => startRun(false);
-async function startRun(full) {
-  if (full && !confirm("Alle foto's uit iCloud worden doorlopen. Dat kan lang duren. Doorgaan?")) return;
-  $("runBtn").disabled = true; $("fullBtn").disabled = true; userPicked = false;
-  const r = await api("/api/run", { method: "POST", body: JSON.stringify({ full }) });
+$("runBtn").onclick = async () => {
+  $("runBtn").disabled = true; userPicked = false;
+  const r = await api("/api/run", { method: "POST" });
   if (!r.ok) alert(r.data.error || "Starten mislukt");
   setTimeout(() => { refresh(); loadRuns(); }, 800);
 };
@@ -482,7 +471,7 @@ $("testImBtn").onclick = async () => {
 function fillSettings(d) {
   const s = d.settings;
   $("sEnabled").checked = s.schedule_enabled; $("sCron").value = s.schedule_cron;
-  $("sAlbum").value = s.favorites_album; $("sVersion").value = s.download_version; $("sRecent").value = s.recent_count; $("sVersionWarn").hidden = s.download_version !== "adjusted"; $("sDelete").checked = s.delete_enabled; $("sDays").value = s.keep_days;
+  $("sAlbum").value = s.favorites_album; $("sVersion").value = s.download_version; $("sVersionWarn").hidden = s.download_version !== "adjusted"; $("sDelete").checked = s.delete_enabled; $("sDays").value = s.keep_days;
   deleteWasOn = s.delete_enabled; $("sDeleteBox").hidden = !s.delete_enabled;
   selLibs.clear(); for (const n of s.libraries) selLibs.add(n);
   $("sIcUser").value = s.icloud_username; $("sIcWeb").value = s.icloud_web_url; $("sImUrl").value = s.immich_url;
@@ -506,7 +495,7 @@ $("saveBtn").onclick = async () => {
   $("saveBtn").disabled = true;
   const body = {
     schedule_enabled: $("sEnabled").checked, schedule_cron: $("sCron").value, libraries: [...selLibs],
-    favorites_album: $("sAlbum").value, download_version: $("sVersion").value, recent_count: $("sRecent").value, delete_enabled: del, keep_days: $("sDays").value,
+    favorites_album: $("sAlbum").value, download_version: $("sVersion").value, delete_enabled: del, keep_days: $("sDays").value,
     icloud_username: $("sIcUser").value, icloud_password: $("sIcPass").value, icloud_web_url: $("sIcWeb").value,
     immich_url: $("sImUrl").value, immich_api_key: $("sImKey").value,
   };

@@ -2,6 +2,11 @@
 
 Every commit bumps the version (minor for features, patch for fixes).
 
+## 0.5.3
+
+- Removed the "newest N photos" option (`--recent`, `PI_ICLOUD_RECENT`) and the "Full synchronisation"
+  button again: every run now reads all photos in iCloud.
+
 ## 0.5.2
 
 - `find-duplicates`: a plain name such as `IMG_5357.JPG` is no longer mistaken for a numbered copy,

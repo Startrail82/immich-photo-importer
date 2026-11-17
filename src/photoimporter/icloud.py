@@ -191,7 +191,6 @@ def _download(
     log,
     library: str | None = None,
     keep_days: int | None = None,
-    recent: int | None = None,
 ) -> bool:
     cmd = _base_command(cfg, library) + [
         "--directory", str(directory),
@@ -205,8 +204,6 @@ def _download(
         cmd += ["--size", "original", "--size", "adjusted"]  # bewerkte krijgt -adjusted in de naam
     if album:
         cmd += ["--album", album]
-    if recent:
-        cmd += ["--recent", str(recent)]
     if keep_days is not None:
         # na het downloaden wissen in iCloud, behalve wat de laatste N dagen genomen is
         cmd += ["--keep-icloud-recent-days", str(keep_days)]
@@ -229,7 +226,7 @@ def _download(
     return True
 
 
-def _download_library(cfg: Config, library: str | None, name: str, log, recent: int | None = None) -> bool:
+def _download_library(cfg: Config, library: str | None, name: str, log) -> bool:
     """Favorietenalbum en daarna alle foto's van één bibliotheek. Wissen gebeurt enkel in de tweede stap,
     zodat een favoriet pas uit iCloud verdwijnt nadat hij ook in de favorietenmap is binnengehaald."""
     suffix = f" [{name}]"
@@ -237,7 +234,7 @@ def _download_library(cfg: Config, library: str | None, name: str, log, recent: 
         log.warn(STEP, f"download 'overig' van {name} overgeslagen vanwege de fout hierboven")
         return False
     return _download(
-        cfg, cfg.source_other, None, "overig" + suffix, log, library, keep_days=cfg.icloud_keep_days, recent=recent
+        cfg, cfg.source_other, None, "overig" + suffix, log, library, keep_days=cfg.icloud_keep_days
     )
 
 
@@ -265,16 +262,6 @@ def download_icloud(cfg: Config, store: Store, log, stats) -> bool:
             f"wissen in iCloud staat AAN: wat ouder is dan {cfg.icloud_keep_days} dagen wordt na het "
             "downloaden uit iCloud gewist (en dus ook van je iPhone)",
         )
-    recent: int | None = None
-    if cfg.full_sync:
-        log.info(STEP, "volledige synchronisatie: alle foto's worden opgehaald")
-    elif not store.has_successful_run():
-        log.info(STEP, "eerste keer: alle foto's worden opgehaald (volledige synchronisatie)")
-    elif cfg.icloud_keep_days is not None:
-        log.info(STEP, "wissen in iCloud staat aan: alle foto's worden gelezen, iCloud blijft vanzelf klein")
-    elif cfg.icloud_recent > 0:
-        recent = cfg.icloud_recent
-        log.info(STEP, f"enkel de nieuwste {recent} foto's worden opgehaald (instelbaar; 0 = alles)")
     if not ICLOUD_LOCK.acquire(blocking=False):
         log.warn(STEP, "er is al een iCloud-actie bezig (bv. bibliotheken ophalen); ik wacht tot die klaar is")
         ICLOUD_LOCK.acquire()
@@ -284,7 +271,7 @@ def download_icloud(cfg: Config, store: Store, log, stats) -> bool:
             log.warn(STEP, "iCloud-downloads overgeslagen vanwege de fout hierboven")
         for library in libraries if ok else ():
             name = library or DEFAULT_LIBRARY
-            if not _download_library(cfg, library, name, log, recent):
+            if not _download_library(cfg, library, name, log):
                 ok = False
     finally:
         ICLOUD_LOCK.release()

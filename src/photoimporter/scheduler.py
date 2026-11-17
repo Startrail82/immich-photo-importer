@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import dataclasses
 import threading
 from datetime import datetime, timedelta
 from typing import Callable
@@ -43,7 +42,6 @@ class Scheduler:
         self._wake = threading.Event()
         self._stop = threading.Event()
         self._manual = False
-        self._full = False
         self._lock = threading.Lock()
         self._running = False
         self._thread = threading.Thread(target=self._loop, name="planner", daemon=True)
@@ -58,13 +56,12 @@ class Scheduler:
         if self._thread.is_alive():
             self._thread.join(timeout=5)
 
-    def trigger_now(self, full: bool = False) -> bool:
-        """Vraagt een run 'nu'. False als er al een loopt. full = alle foto's ophalen, niet enkel de nieuwste."""
+    def trigger_now(self) -> bool:
+        """Vraagt een run 'nu'. False als er al een loopt."""
         with self._lock:
             if self._running:
                 return False
             self._manual = True
-            self._full = full
         self._wake.set()
         return True
 
@@ -96,24 +93,20 @@ class Scheduler:
                 return
             with self._lock:
                 manual, self._manual = self._manual, False
-                full, self._full = self._full, False
                 self._wake.clear()
             if manual:
-                self._run_once("handmatig", full)
+                self._run_once("handmatig")
             elif woken or target is None:
                 continue  # instellingen gewijzigd (of niets ingepland): opnieuw plannen
             else:
                 self._run_once("gepland")
 
-    def _run_once(self, trigger: str, full: bool = False) -> None:
+    def _run_once(self, trigger: str) -> None:
         with self._lock:
             self._running = True
         try:
             log.info("%s run gestart", trigger)
-            cfg = self.effective_config()
-            if full:
-                cfg = dataclasses.replace(cfg, full_sync=True)
-            result = self._runner(cfg, self.store, trigger)
+            result = self._runner(self.effective_config(), self.store, trigger)
             log.info("run %s klaar: %s", result.run_id, result.status)
         except RunAlreadyActive:
             log.warning("run overgeslagen: er loopt al een run (bv. via de opdrachtregel)")
