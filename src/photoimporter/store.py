@@ -45,6 +45,14 @@ CREATE TABLE IF NOT EXISTS pending_favorites (
     done INTEGER NOT NULL DEFAULT 0,
     done_ts TEXT
 );
+CREATE TABLE IF NOT EXISTS imported (
+    sha256 TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    target TEXT NOT NULL,
+    source TEXT,
+    created TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS state (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL,
@@ -175,6 +183,32 @@ class Store:
             )
 
     # --- losse toestandswaarden (bv. iCloud wacht op een code) ----------
+    # --- administratie van binnengehaalde bestanden ----------------------------
+    def get_imported(self, sha256: str) -> sqlite3.Row | None:
+        with self._lock:
+            return self._conn.execute("SELECT * FROM imported WHERE sha256 = ?", (sha256,)).fetchone()
+
+    def add_imported(self, sha256: str, name: str, size: int, target: str, source: str | None) -> None:
+        """Legt vast dat een bestand met deze hash (zoals het binnenkwam) is verwerkt."""
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO imported (sha256, name, size, target, source, created) VALUES (?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(sha256) DO UPDATE SET target = excluded.target",
+                (sha256, name, size, target, source, _now()),
+            )
+
+    def count_imported(self) -> int:
+        with self._lock:
+            return self._conn.execute("SELECT COUNT(*) FROM imported").fetchone()[0]
+
+    def has_successful_run(self) -> bool:
+        """Is er al eens een echte run gelukt? (Dan is een eerste volledige synchronisatie niet meer nodig.)"""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT 1 FROM runs WHERE dry_run = 0 AND status IN ('ok', 'ok_met_fouten') LIMIT 1"
+            ).fetchone()
+        return row is not None
+
     def set_state(self, key: str, value: str) -> None:
         with self._lock:
             self._conn.execute(

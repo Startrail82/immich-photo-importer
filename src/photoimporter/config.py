@@ -89,6 +89,11 @@ class Config:
     icloud_libraries: tuple[str, ...] = ()
     # Wissen in iCloud: None = nooit (alleen kopiëren); N = na het downloaden alles wissen wat ouder is dan N dagen
     icloud_keep_days: int | None = None
+    # Alleen de nieuwste N foto's ophalen (icloudpd --recent). 0 = alles. Het favorietenalbum wordt altijd volledig
+    # gelezen. Telt niet bij wissen in iCloud aan (dan blijft iCloud vanzelf klein) en niet bij een volledige
+    # synchronisatie of zolang er nog geen run gelukt is.
+    icloud_recent: int = 500
+    full_sync: bool = False
     # Welke versie van bewerkte foto's: "original" (onbewerkt, de standaard van icloudpd), "adjusted" (bewerkt, of het
     # origineel als er niets bewerkt is) of "both" (beide; de bewerkte krijgt -adjusted in de naam)
     icloud_version: str = "original"
@@ -153,6 +158,7 @@ class Config:
                 x.strip() for x in os.environ.get("PI_ICLOUD_LIBRARY", "").split(",") if x.strip()
             ),
             icloud_keep_days=_env_optional_int("PI_ICLOUD_KEEP_RECENT_DAYS"),
+            icloud_recent=_env_int("PI_ICLOUD_RECENT", 500),
             icloud_version=os.environ.get("PI_ICLOUD_VERSION", "original").strip().lower() or "original",
             icloud_web_port=_env_int("PI_ICLOUD_WEB_PORT", 8080),
             icloud_web_url=os.environ.get("PI_ICLOUD_WEB_URL", "").strip(),
@@ -187,6 +193,8 @@ class Config:
             raise ConfigError(f"ongeldige planning: {exc}") from None
         if self.icloud_version not in ("original", "adjusted", "both"):
             raise ConfigError("PI_ICLOUD_VERSION moet original, adjusted of both zijn")
+        if self.icloud_recent < 0:
+            raise ConfigError("PI_ICLOUD_RECENT mag niet negatief zijn")
         if self.icloud_keep_days is not None and self.icloud_keep_days < 0:
             raise ConfigError("het aantal dagen om in iCloud te bewaren mag niet negatief zijn")
         names = list(named)

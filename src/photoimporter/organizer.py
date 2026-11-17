@@ -259,6 +259,34 @@ def process_one(
     item, when = planned.item, planned.when
     dry = cfg.dry_run
     day_dir = cfg.target / f"{when:%Y}" / f"{when:%Y_%m}" / f"{when:%Y_%m_%d}"
+    sha = sha256_of(item.path)
+    known = store.get_imported(sha)
+    if known is not None and Path(known["target"]).exists():
+        # Dit bestand (zoals het binnenkwam) is al eerder verwerkt, ook al is de naam, de extensie of de
+        # dagmap nu anders, of is het bestand op de NAS inmiddels aangepast (bv. een ingebouwde rating).
+        dest, status, number = Path(known["target"]), "duplicate", 0
+        shown = dest.relative_to(cfg.target) if dest.is_relative_to(cfg.target) else dest
+        verb = "zou verwijderd worden" if dry else "verwijderd"
+        log.info(prefix, f"{item.path.name}: al eerder binnengehaald als {shown}, duplicaat {verb}", item.path)
+        if not dry:
+            item.path.unlink()
+        stats.duplicates_removed += 1
+        _favorite_tail(item, dest, prefix, cfg, store, log, stats)
+        return
+    if known is not None:
+        log.warn(prefix, f"{item.path.name}: eerder binnengehaald maar niet meer aanwezig ({known['target']}), opnieuw geplaatst", item.path)
+
+    twin = _same_image_twin(item.path, day_dir) if day_dir.is_dir() else None
+    if twin is not None:
+        # Zelfde beeld onder een andere naam/extensie, of met aangepaste metadata (oude bestanden zonder registratie).
+        if not dry:
+            item.path.unlink()
+            store.add_imported(sha, item.path.name, twin.stat().st_size, str(twin), item.source)
+        log.info(prefix, f"{item.path.name}: zelfde beeld als {twin.relative_to(cfg.target)}, duplicaat verwijderd", item.path)
+        stats.duplicates_removed += 1
+        _favorite_tail(item, twin, prefix, cfg, store, log, stats)
+        return
+
     dest, status, number = resolve_destination(item.path, day_dir, reserved)
     shown = dest.relative_to(cfg.target)
 
@@ -267,6 +295,7 @@ def process_one(
         log.info(prefix, f"{item.path.name}: identiek aan {shown}, duplicaat {verb}", item.path)
         if not dry:
             item.path.unlink()
+            store.add_imported(sha, item.path.name, dest.stat().st_size, str(dest), item.source)
         stats.duplicates_removed += 1
     else:
         verb = "zou verplaatst worden naar" if dry else "verplaatst naar"
@@ -276,6 +305,8 @@ def process_one(
         else:
             move_file(item.path, dest)
         stats.moved += 1
+        if not dry:
+            store.add_imported(sha, item.path.name, dest.stat().st_size, str(dest), item.source)
         if number > 0:
             stats.renamed += 1
             log.warn(prefix, f"naamconflict met andere inhoud, hernoemd naar {dest.name}", item.path)
@@ -292,14 +323,40 @@ def process_one(
                     f"geen EXIF-datum; bestandsdatum gebruikt ({when:%Y-%m-%d %H:%M:%S})",
                 )
 
-    if item.favorite:
-        if dry:
-            log.info(prefix, f"sidecar met rating 5 zou geschreven worden voor {dest.name}", item.path)
-        else:
-            if write_rating_sidecar(dest):
-                stats.sidecars += 1
-                log.info(prefix, f"sidecar met rating 5 geschreven voor {dest.name}", dest)
-            store.add_pending_favorite(str(dest))
+    _favorite_tail(item, dest, prefix, cfg, store, log, stats)
+
+
+def _same_image_twin(src: Path, day_dir: Path) -> Path | None:
+    """Bestaat in de dagmap al een bestand met hetzelfde beeld (los van naam, extensie en metadata)?"""
+    from .dedupe import image_md5, image_md5_many
+
+    stem = src.stem.lower()
+    candidates = [
+        p for p in day_dir.iterdir()
+        if p.is_file() and classify(p) in ("image", "video") and p.stem.lower().startswith(stem)
+    ]
+    if not candidates:
+        return None
+    mine = image_md5(src)
+    if mine is None:
+        return None
+    for path, digest in image_md5_many(candidates).items():
+        if digest == mine:
+            return path
+    return None
+
+
+def _favorite_tail(item, dest, prefix, cfg, store, log, stats) -> None:
+    """Favorieten: sidecar met rating 5 schrijven en in de wachtrij voor Immich zetten."""
+    if not item.favorite:
+        return
+    if cfg.dry_run:
+        log.info(prefix, f"sidecar met rating 5 zou geschreven worden voor {dest.name}", item.path)
+        return
+    if write_rating_sidecar(dest):
+        stats.sidecars += 1
+        log.info(prefix, f"sidecar met rating 5 geschreven voor {dest.name}", dest)
+    store.add_pending_favorite(str(dest))
 
 
 def _run(cfg: Config, store: Store, run_id: int, log: RunLog, stats: RunStats) -> None:

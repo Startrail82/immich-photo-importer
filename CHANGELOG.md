@@ -2,6 +2,16 @@
 
 Every commit bumps the version (minor for features, patch for fixes).
 
+## 0.5.0
+
+- Duplicates: every imported file is recorded by hash in the database, so a photo that comes back
+  under another name or extension, or after the NAS copy was modified (e.g. an embedded rating),
+  is recognised. Fallback for older files: compare the image data hash within the day folder.
+- Incremental downloads: only the newest N photos per run (`--recent`, setting / `PI_ICLOUD_RECENT`,
+  default 500). First run, deleting in iCloud and the new "Full synchronisation" button read everything.
+- New command `photoimporter find-duplicates`: lists duplicates on the target and deletes nothing
+  unless `--apply` is given.
+
 ## 0.4.1
 
 - Docs/UI: corrected how edited versions interact with files that are already on the NAS.

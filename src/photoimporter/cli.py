@@ -113,6 +113,8 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="alleen tonen wat er zou gebeuren, niets wijzigen",
     )
+    dup = sub.add_parser("find-duplicates", help="dubbele foto's op de NAS zoeken (wist niets zonder --apply)")
+    dup.add_argument("--apply", action="store_true", help="de getoonde duplicaten ook echt wissen")
     sub.add_parser("immich-check", help="de verbinding met Immich en de API-sleutel controleren")
     sub.add_parser("icloud-check", help="inloggen bij iCloud (incl. tweestapscode) en het favorietenalbum zoeken")
     sub.add_parser("daemon", help="planner starten: dagelijks automatisch uitvoeren")
@@ -127,6 +129,10 @@ def main(argv: list[str] | None = None) -> int:
         log.error("configuratiefout: %s", exc)
         return 2
 
+    if args.command == "find-duplicates":
+        from .dedupe import run_find_duplicates
+
+        return run_find_duplicates(cfg.target, args.apply, print)
     if args.command == "immich-check":
         return immich_check(cfg)
     if args.command == "icloud-check":

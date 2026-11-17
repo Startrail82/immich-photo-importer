@@ -213,7 +213,8 @@ class _Handler(BaseHTTPRequestHandler):
         if not self._same_origin():
             return self._json({"error": "verzoek van een andere herkomst geweigerd"}, 403)
         if self.path == "/api/run":
-            if app.scheduler.trigger_now():
+            body = self._read_json() or {}
+            if app.scheduler.trigger_now(full=bool(body.get("full"))):
                 return self._json({"started": True}, 202)
             return self._json({"started": False, "error": "er loopt al een run"}, 409)
         if self.path == "/api/settings":

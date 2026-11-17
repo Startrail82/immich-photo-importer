@@ -15,15 +15,19 @@ Changes per version: see [CHANGELOG.md](CHANGELOG.md).
 2. Determines each file's date: EXIF/QuickTime date, otherwise the older of the modification
    and creation time. The video part of a Live Photo follows its photo's date.
 3. Moves it to `<target>/YYYY/YYYY_MM/YYYY_MM_DD/`.
-4. Identical file (name, size and hash) already present: the duplicate is removed. Same name but
-   different content: the new file gets `_1`, `_2`, ... and a notice.
+4. Duplicate check. Every imported file is recorded in the database by its hash as it arrived. A
+   file with a known hash is a duplicate, whatever its name, extension or folder, and even if the
+   copy on the NAS was modified afterwards (for example Immich embedding a rating). Without a
+   record, a file in the same day folder whose image data (`exiftool` ImageDataHash) is identical
+   is also a duplicate. Same name but really different content: the new file gets `_1`, `_2`, ...
+   and a notice.
 5. Favorites get a sidecar `<file>.xmp` with `xmp:Rating="5"` and are queued to be marked as
    favorite in Immich.
 6. Unknown file types are left alone and listed under "needs attention".
 
 iCloud (optional): logs in with `icloudpd --auth-only` (waits for a two-factor code if needed, via
-icloudpd's own web page), then downloads the favorites album into `favorieten` and all photos into
-`overig`, with `--set-exif-datetime` and `--folder-structure none`. If login or the favorites
+icloudpd's own web page), then downloads the favorites album into `favorieten` and the photos into
+`overig` (the newest N, see "Photos per run"; everything on the first run), with `--set-exif-datetime` and `--folder-structure none`. If login or the favorites
 download fails, `overig` is not downloaded; the inbox is always sorted. A favorite is also part
 of "all photos": that second copy is removed as an identical duplicate and the favorite flag is
 kept. Several iCloud libraries (for example the personal and the shared library) can be selected
@@ -59,6 +63,7 @@ Requires `exiftool` (Debian/Ubuntu: `apt install libimage-exiftool-perl`) and, f
 | `photoimporter daemon` | scheduler only (cron expression), no web UI |
 | `photoimporter serve` | scheduler + web UI (the Docker default) |
 | `photoimporter icloud-check` | log in to iCloud and check the favorites album |
+| `photoimporter find-duplicates [--apply]` | list duplicates on the target (image-data hash); deletes only with `--apply` |
 | `photoimporter immich-check` | check the Immich connection step by step |
 
 ## Web UI
@@ -75,10 +80,12 @@ earlier runs and the "Run now" button. **Settings**:
   the name of the favorites album.
 - **Edited photos**: iCloud keeps edits (color, crop) separate from the original. Choose to download
   the original (default), the edited version (or the original if nothing was edited), or both (the
-  edited file gets an `-adjusted` suffix, so the photo appears twice in Immich). The source
-  folders are emptied after sorting, so every run fetches the selected version of all photos again; an
-  edited file that differs from the original already on the NAS arrives next to it as a `_1` copy. With "edited" the unedited original never reaches your NAS, so do
+  edited file gets an `-adjusted` suffix, so the photo appears twice in Immich). A photo that
+  was imported before is recognised and not placed again. With "edited" the unedited original never reaches your NAS, so do
   not combine it with deleting in iCloud if you may want the original later.
+- **Photos per run**: normally only the newest N photos (default 500, 0 = all) are fetched
+  (`icloudpd --recent`); the favorites album is always read completely. The first run, a run with
+  deleting in iCloud enabled, and the "Full synchronisation" button on the overview read everything.
 - **Deleting in iCloud**: off by default. When on, assets older than N days are deleted from iCloud
   after download. This also removes them from your iPhone (30 days in "Recently Deleted").
 
@@ -106,6 +113,7 @@ Most connection and schedule values can also be set in the web UI; the UI wins o
 | `PI_ICLOUD_FAVORITES_ALBUM` | `Favorites` | exact name of the favorites album (see `icloud-check`) |
 | `PI_ICLOUD_LIBRARY` | empty | comma-separated libraries; empty = personal library |
 | `PI_ICLOUD_VERSION` | `original` | `original`, `adjusted` (edited, or original if unedited) or `both` |
+| `PI_ICLOUD_RECENT` | `500` | only fetch the newest N photos per run; `0` = all |
 | `PI_ICLOUD_KEEP_RECENT_DAYS` | unset | set = delete from iCloud what is older than N days |
 | `PI_ICLOUD_COOKIE_DIR` | `<data>/icloud-cookies` | keeps the iCloud session; must be a volume |
 | `PI_ICLOUD_AUTH_WAIT_SECONDS` | `1800` | how long to wait for a two-factor code |
