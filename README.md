@@ -63,7 +63,7 @@ Requires `exiftool` (Debian/Ubuntu: `apt install libimage-exiftool-perl`) and, f
 | `photoimporter daemon` | scheduler only (cron expression), no web UI |
 | `photoimporter serve` | scheduler + web UI (the Docker default) |
 | `photoimporter icloud-check` | log in to iCloud and check the favorites album |
-| `photoimporter find-duplicates [--apply]` | list duplicates on the target (image-data hash); deletes only with `--apply` |
+| `photoimporter find-duplicates [folder] [--apply]` | list duplicates on the target or in one folder (image-data hash); deletes only with `--apply` |
 | `photoimporter immich-check` | check the Immich connection step by step |
 
 ## Web UI

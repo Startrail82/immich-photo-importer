@@ -7,6 +7,7 @@ import logging
 import signal
 import sys
 import threading
+from pathlib import Path
 
 from . import __version__
 from .config import Config, ConfigError
@@ -114,6 +115,7 @@ def main(argv: list[str] | None = None) -> int:
         help="alleen tonen wat er zou gebeuren, niets wijzigen",
     )
     dup = sub.add_parser("find-duplicates", help="dubbele foto's op de NAS zoeken (wist niets zonder --apply)")
+    dup.add_argument("path", nargs="?", help="enkel deze map controleren (standaard: de hele doelmap)")
     dup.add_argument("--apply", action="store_true", help="de getoonde duplicaten ook echt wissen")
     sub.add_parser("immich-check", help="de verbinding met Immich en de API-sleutel controleren")
     sub.add_parser("icloud-check", help="inloggen bij iCloud (incl. tweestapscode) en het favorietenalbum zoeken")
@@ -132,7 +134,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "find-duplicates":
         from .dedupe import run_find_duplicates
 
-        return run_find_duplicates(cfg.target, args.apply, print)
+        return run_find_duplicates(Path(args.path) if args.path else cfg.target, args.apply, print)
     if args.command == "immich-check":
         return immich_check(cfg)
     if args.command == "icloud-check":

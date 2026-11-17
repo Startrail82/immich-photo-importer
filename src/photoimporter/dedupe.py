@@ -62,9 +62,17 @@ class Group:
 
 
 def find_duplicates(root: Path, log=print) -> list[Group]:
-    media = [p for p in sorted(root.rglob("*")) if p.is_file() and classify(p) in ("image", "video")]
+    media = [
+        p for p in sorted(root.rglob("*"))
+        if p.is_file()
+        and not any(part.startswith("@") or part == "#recycle" for part in p.relative_to(root).parts)  # Synology
+        and classify(p) in ("image", "video")
+    ]
     log(f"{len(media)} bestanden gevonden, beeldinhoud wordt vergeleken...")
-    hashes = image_md5_many(media)
+    hashes: dict[Path, str] = {}
+    for start in range(0, len(media), 500):
+        hashes.update(image_md5_many(media[start : start + 500]))
+        log(f"voortgang: {min(start + 500, len(media))} van {len(media)}")
     buckets: dict[tuple[str, str], list[Path]] = defaultdict(list)
     for path in media:
         digest = hashes.get(path)

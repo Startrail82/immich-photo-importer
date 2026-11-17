@@ -2,6 +2,11 @@
 
 Every commit bumps the version (minor for features, patch for fixes).
 
+## 0.5.1
+
+- `find-duplicates`: skips Synology `@eaDir`/`#recycle` folders, accepts an optional folder
+  argument and prints progress.
+
 ## 0.5.0
 
 - Duplicates: every imported file is recorded by hash in the database, so a photo that comes back

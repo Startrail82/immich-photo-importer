@@ -167,3 +167,13 @@ def test_find_duplicates_prefers_file_with_sidecar_and_removes_loser_sidecar(env
     assert groups[0].keep == b
     run_find_duplicates(dirs["target"], apply=True, log=lambda *_: None)
     assert b.exists() and not a.exists()
+
+
+@needs_exiftool
+def test_find_duplicates_ignores_synology_metadata_folders(env):
+    cfg, store, dirs = env
+    d = dirs["target"] / "2024" / "2024_01" / "2024_01_02"
+    a = make_jpeg(d / "IMG_1.JPG", (1, 2, 3), "2024:01:02 03:04:05")
+    (d / "@eaDir").mkdir()
+    (d / "@eaDir" / "IMG_1.JPG").write_bytes(a.read_bytes())
+    assert find_duplicates(dirs["target"], lambda *_: None) == []
