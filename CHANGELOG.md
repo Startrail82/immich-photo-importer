@@ -2,6 +2,12 @@
 
 Every commit bumps the version (minor for features, patch for fixes).
 
+## 0.7.3
+
+- Overview: while a run is active, a "Naar huidige log" button opens the live log.
+- Log: colors for sign-in lines, errors and summaries, and a highlighted separator line whenever a new
+  phase starts ("Fase 2 van 6: scannen").
+
 ## 0.7.2
 
 - Log tab: "Alles selecteren" button selects the whole visible log, so it is easy to copy and share.

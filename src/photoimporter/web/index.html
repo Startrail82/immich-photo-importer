@@ -9,12 +9,14 @@
     --primary: #4250af; --primary-hover: #3a479b; --on-primary: #fff;
     --bg: #fafafa; --card: #fff; --border: #e5e7eb; --text: #1f2937; --muted: #6b7280;
     --ok: #16a34a; --warn: #d97706; --err: #dc2626; --chip: #eef0fb; --log-bg: #f3f4f6;
+    --c-auth: #7c3aed; --c-sum: #0f766e; --c-phase: #1d4ed8; --c-phase-bg: #dbeafe;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --primary: #adcbfa; --primary-hover: #c4dafc; --on-primary: #0a0a0a;
       --bg: #0a0a0a; --card: #151515; --border: #2a2a2a; --text: #e5e7eb; --muted: #9ca3af;
       --ok: #4ade80; --warn: #fbbf24; --err: #f87171; --chip: #1e2433; --log-bg: #0f0f0f;
+      --c-auth: #c4b5fd; --c-sum: #5eead4; --c-phase: #93c5fd; --c-phase-bg: #1e3a5f;
     }
   }
   * { box-sizing: border-box; }
@@ -58,6 +60,11 @@
     font: 12.5px/1.55 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; word-break: break-word; }
   #log .WARNING { color: var(--warn); } #log .ERROR { color: var(--err); font-weight: 600; }
   #log .step { color: var(--muted); }
+  #log .auth { color: var(--c-auth); } #log .auth .step { color: var(--c-auth); opacity: .7; }
+  #log .summary { color: var(--c-sum); font-weight: 600; } #log .summary .step { color: var(--c-sum); opacity: .7; font-weight: 400; }
+  #log .ERROR { background: color-mix(in srgb, var(--err) 14%, transparent); }
+  #log .phase { color: var(--c-phase); background: var(--c-phase-bg); font-weight: 700; margin: 12px -4px 4px; padding: 5px 8px;
+    border-radius: 6px; letter-spacing: .02em; }
   .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
   select { font: inherit; padding: 6px 10px; border-radius: 10px; border: 1px solid var(--border);
     background: var(--card); color: var(--text); }
@@ -119,7 +126,10 @@
         <div class="pill"><span class="dot" id="dot"></span><span id="state">Laden...</span></div>
         <div class="meta" id="meta"></div>
       </div>
-      <button id="runBtn">Nu uitvoeren</button>
+      <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center">
+        <button id="liveBtn" type="button" class="ghost" style="display:none">Naar huidige log</button>
+        <button id="runBtn">Nu uitvoeren</button>
+      </div>
     </div>
   </section>
 
@@ -247,7 +257,7 @@ const COUNTERS = [
   ["favorites_waiting", "Wachten op Immich"], ["date_fallbacks", "Bestandsdatum"], ["unknown", "Onbekend type"],
   ["skipped", "Overgeslagen"], ["errors", "Fouten"],
 ];
-let status = null, selectedRun = null, lastEventId = 0, userPicked = false;
+let status = null, selectedRun = null, lastEventId = 0, userPicked = false, lastPhase = null;
 
 async function api(path, opts) {
   const r = await fetch(path, opts);
@@ -271,6 +281,7 @@ function renderStatus(s) {
   bits.push("Immich: " + (s.immich_configured ? "gekoppeld" : "niet ingesteld"));
   if (s.pending_favorites) bits.push(s.pending_favorites + " favoriet(en) in wachtrij");
   $("meta").textContent = bits.join("  ·  ");
+  $("liveBtn").style.display = s.running && last ? "" : "none";
   $("runBtn").disabled = s.running;
   $("runBtn").textContent = s.running ? "Run bezig..." : "Nu uitvoeren";
   const mfa = s.icloud_status === "wacht_op_code" && (s.running || s.icloud_busy);
@@ -326,10 +337,14 @@ async function loadRuns() {
 }
 
 function selectRun(id) {
-  selectedRun = id; lastEventId = 0; $("log").replaceChildren(); $("runSelect").value = id;
+  selectedRun = id; lastEventId = 0; lastPhase = null; $("log").replaceChildren(); $("runSelect").value = id;
   if (!$("tab-log").hidden) history.replaceState(null, "", "#log/" + id);
   polling = false; pollLog();
 }
+$("liveBtn").onclick = () => {
+  if (!status || !status.last_run) return;
+  userPicked = false; selectRun(status.last_run.id); showTab("log");
+};
 $("selAll").onclick = () => {
   const r = document.createRange(); r.selectNodeContents($("log"));
   const s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
@@ -342,6 +357,19 @@ async function pollLog() {
   polling = true;
   try { await pollLogOnce(); } finally { polling = false; }
 }
+function phaseOf(step) { return step.replace(/\s+\d+\/\d+$/, ""); }
+function phaseTitle(p) {
+  if (p === "start") return "Start van de run";
+  if (p === "klaar") return "Afgerond";
+  const m = p.match(/^(\d+)\/(\d+)\s+(.*)$/);
+  return m ? "Fase " + m[1] + " van " + m[2] + ": " + m[3] : p;
+}
+function lineClass(e) {
+  if (e.level === "ERROR" || e.level === "WARNING") return "";
+  if (/inloggen|tweestap|\bMFA\b|authentic|ingelogd|codepagina|wacht op code/i.test(e.step + " " + e.message)) return " auth";
+  if (e.step === "klaar" || /\bklaar:|bestand\(en\) (gevonden|zonder|nog te recent)|niets te doen|EXIF-datums lezen|^status:/i.test(e.message)) return " summary";
+  return "";
+}
 async function pollLogOnce() {
   const run = selectedRun;
   const { data } = await api("/api/runs/" + run + "/events?after=" + lastEventId);
@@ -349,7 +377,12 @@ async function pollLogOnce() {
   const log = $("log"); const stick = log.scrollTop + log.clientHeight >= log.scrollHeight - 30;
   for (const e of data) {
     lastEventId = e.id;
-    const line = el("div", e.level);
+    const phase = phaseOf(e.step);
+    if (phase !== lastPhase) {
+      lastPhase = phase;
+      log.append(el("div", "phase", "\u25B6  " + phaseTitle(phase)));
+    }
+    const line = el("div", e.level + lineClass(e));
     line.append(el("span", "step", e.ts.slice(11) + "  [" + e.step + "]  "), document.createTextNode(e.message));
     log.append(line);
   }
