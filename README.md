@@ -79,8 +79,9 @@ Requires `exiftool` (Debian/Ubuntu: `apt install libimage-exiftool-perl`) and, f
 
 ## Web UI
 
-Two tabs. **Overview**: status, counters of the last run, the "needs attention" list, live log,
-earlier runs and the "Run now" button. **Settings**:
+Four tabs, using the full screen width. **Overview**: status, counters of the last run, the "needs
+attention" list and the "Run now" button. **Runs**: all earlier runs; click one to open its log.
+**Log**: the live log, with a selector for any run. **Settings**:
 
 - **Connections**: iCloud Apple ID, password, URL of the two-factor code page, Immich URL and API
   key. Password and key are write-only (stored, never shown again). Two test buttons check iCloud

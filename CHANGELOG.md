@@ -2,6 +2,13 @@
 
 Every commit bumps the version (minor for features, patch for fixes).
 
+## 0.7.0
+
+- Web UI: the log and the list of earlier runs now have their own tabs (**Runs** and **Log**).
+  Clicking a run in **Runs** opens its log in the **Log** tab (deep link `#log/<id>`).
+- The layout now uses the full screen width and reflows to fewer columns on smaller screens
+  (e.g. a 13" laptop); the log fills the window height.
+
 ## 0.6.0
 
 - Inbox now has `favorieten` and `overig` subfolders (created automatically). Inbox files are always

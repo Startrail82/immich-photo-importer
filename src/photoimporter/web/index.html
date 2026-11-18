@@ -26,7 +26,7 @@
     display: grid; place-items: center; font-weight: 700; }
   header h1 { font-size: 18px; margin: 0; font-weight: 600; flex: 1; }
   header .ver { color: var(--muted); font-size: 12px; }
-  main { max-width: 1100px; margin: 0 auto; padding: 24px; display: grid; gap: 20px; }
+  main { width: 100%; max-width: 2000px; margin: 0 auto; padding: 20px clamp(12px, 2vw, 32px); display: grid; gap: 20px; }
   .card { background: var(--card); border: 1px solid var(--border); border-radius: 18px; padding: 20px; }
   .card h2 { margin: 0 0 14px; font-size: 16px; font-weight: 600; }
   .top { display: flex; flex-wrap: wrap; gap: 18px; align-items: center; justify-content: space-between; }
@@ -54,7 +54,7 @@
   td { padding: 8px; border-top: 1px solid var(--border); vertical-align: top; }
   td.path { word-break: break-all; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12.5px; }
   .tag { padding: 2px 10px; border-radius: 999px; background: var(--chip); font-size: 12px; white-space: nowrap; }
-  #log { background: var(--log-bg); border-radius: 12px; padding: 12px; height: 340px; overflow: auto;
+  #log { background: var(--log-bg); border-radius: 12px; padding: 12px; height: calc(100vh - 230px); min-height: 320px; overflow: auto;
     font: 12.5px/1.55 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; word-break: break-word; }
   #log .WARNING { color: var(--warn); } #log .ERROR { color: var(--err); font-weight: 600; }
   #log .step { color: var(--muted); }
@@ -66,7 +66,12 @@
   nav { display: flex; gap: 4px; }
   nav a { padding: 7px 16px; border-radius: 999px; color: var(--muted); text-decoration: none; font-weight: 600; cursor: pointer; }
   nav a.active { background: var(--chip); color: var(--primary); }
-  .panel { display: grid; gap: 20px; }
+  .panel { display: grid; gap: 20px; align-items: start; }
+  /* brede schermen: kaarten naast elkaar, op een 13" of smaller automatisch minder kolommen */
+  #tab-settings { grid-template-columns: repeat(auto-fit, minmax(min(100%, 430px), 1fr)); }
+  #tab-overview { grid-template-columns: repeat(auto-fit, minmax(min(100%, 520px), 1fr)); }
+  .panel > .wide { grid-column: 1 / -1; }
+  header { flex-wrap: wrap; }
   .panel[hidden] { display: none; }
   label.field { display: block; font-weight: 600; margin: 0 0 6px; }
   .hint { color: var(--muted); font-size: 13px; margin: 4px 0 0; font-weight: 400; }
@@ -83,7 +88,7 @@
   .explain.bad { color: var(--err); }
   .warnbox { border: 1px solid var(--warn); background: color-mix(in srgb, var(--warn) 12%, var(--card));
     border-radius: 12px; padding: 12px 16px; font-size: 14px; margin-top: 10px; }
-  .savebar { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+  .savebar { grid-column: 1 / -1; display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
   .msg.ok { color: var(--ok); } .msg.bad { color: var(--err); font-weight: 600; }
 </style>
 </head>
@@ -93,6 +98,8 @@
   <h1>Photo Importer</h1>
   <nav>
     <a id="nav-overview" data-tab="overview">Overzicht</a>
+    <a id="nav-runs" data-tab="runs">Runs</a>
+    <a id="nav-log" data-tab="log">Log</a>
     <a id="nav-settings" data-tab="settings">Instellingen</a>
   </nav>
   <span class="ver" id="ver"></span>
@@ -104,7 +111,7 @@
   </div>
 
   <div class="panel" id="tab-overview">
-  <section class="card">
+  <section class="card wide">
     <div class="top">
       <div>
         <div class="pill"><span class="dot" id="dot"></span><span id="state">Laden...</span></div>
@@ -114,28 +121,33 @@
     </div>
   </section>
 
-  <section class="card">
+  <section class="card wide">
     <h2>Laatste run <span class="meta" id="lastWhen"></span></h2>
     <div class="counters" id="counters"></div>
   </section>
 
-  <section class="card">
+  <section class="card wide">
     <h2>Aandacht nodig <span class="meta" id="reviewCount"></span></h2>
     <div id="review"></div>
   </section>
 
-  <section class="card">
+  </div>
+
+  <div class="panel" id="tab-runs" hidden>
+  <section class="card wide">
+    <h2>Eerdere runs <span class="meta">(klik op een run om het log te openen)</span></h2>
+    <div id="runs"></div>
+  </section>
+  </div>
+
+  <div class="panel" id="tab-log" hidden>
+  <section class="card wide">
     <h2>Log</h2>
     <div class="row">
       <select id="runSelect"></select>
       <span class="meta" id="follow"></span>
     </div>
     <div id="log"></div>
-  </section>
-
-  <section class="card">
-    <h2>Eerdere runs</h2>
-    <div id="runs"></div>
   </section>
   </div>
 
@@ -216,7 +228,7 @@
       </div>
     </section>
 
-    <div class="savebar">
+    <div class="savebar wide">
       <button id="saveBtn">Opslaan</button>
       <span class="msg" id="saveMsg"></span>
     </div>
@@ -304,7 +316,7 @@ async function loadRuns() {
     const st = r.stats ? JSON.parse(r.stats) : {};
     const tr = el("tr", "run");
     for (const v of ["#" + r.id + (r.dry_run ? " (droog)" : ""), fmt(r.started), r.trigger, r.status, st.moved ?? "", st.errors ?? ""]) tr.append(el("td", null, v));
-    tr.onclick = () => { userPicked = true; selectRun(r.id); window.scrollTo({ top: $("log").offsetTop - 80, behavior: "smooth" }); };
+    tr.onclick = () => { userPicked = true; selectRun(r.id); showTab("log"); };
     t.append(tr);
   }
   box.append(t);
@@ -312,6 +324,7 @@ async function loadRuns() {
 
 function selectRun(id) {
   selectedRun = id; lastEventId = 0; $("log").replaceChildren(); $("runSelect").value = id;
+  if (!$("tab-log").hidden) history.replaceState(null, "", "#log/" + id);
   polling = false; pollLog();
 }
 $("runSelect").onchange = (e) => { userPicked = true; selectRun(+e.target.value); };
@@ -351,16 +364,19 @@ $("runBtn").onclick = async () => {
 };
 
 // ---- tabbladen ---------------------------------------------------------------
+const TABS = ["overview", "runs", "log", "settings"];
+const HASH = { overview: "#", runs: "#runs", log: "#log", settings: "#instellingen" };
 function showTab(name) {
-  for (const t of ["overview", "settings"]) {
+  for (const t of TABS) {
     $("tab-" + t).hidden = t !== name;
     $("nav-" + t).className = t === name ? "active" : "";
   }
-  history.replaceState(null, "", name === "settings" ? "#instellingen" : "#");
+  history.replaceState(null, "", name === "log" && selectedRun ? "#log/" + selectedRun : HASH[name]);
   if (name === "settings") loadSettings();
+  if (name === "runs") loadRuns();
+  if (name === "log") { const l = $("log"); l.scrollTop = l.scrollHeight; }
 }
-$("nav-overview").onclick = () => showTab("overview");
-$("nav-settings").onclick = () => showTab("settings");
+for (const t of TABS) $("nav-" + t).onclick = () => showTab(t);
 
 // ---- instellingen ---------------------------------------------------------------
 const QUICK = [
@@ -506,7 +522,14 @@ $("saveBtn").onclick = async () => {
   refresh();
 };
 
-showTab(location.hash === "#instellingen" ? "settings" : "overview");
+{
+  const h = location.hash;
+  if (h.startsWith("#log")) {
+    const id = parseInt(h.split("/")[1], 10);
+    if (id) { userPicked = true; selectRun(id); }
+    showTab("log");
+  } else showTab(h === "#instellingen" ? "settings" : h === "#runs" ? "runs" : "overview");
+}
 
 let tick = 0;
 setInterval(() => { refresh(); if (++tick % 5 === 0) { loadReview(); loadRuns(); } }, 2000);
