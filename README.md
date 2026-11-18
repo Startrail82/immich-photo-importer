@@ -11,7 +11,7 @@ Changes per version: see [CHANGELOG.md](CHANGELOG.md).
 ## What a run does
 
 1. Scans three source folders: `favorieten` (iCloud favorites album), `overig` (the rest of
-   iCloud) and `inbox` (files you drop in yourself).
+   iCloud) and `inbox` (files you drop in yourself, see below).
 2. Determines each file's date: EXIF/QuickTime date, otherwise the older of the modification
    and creation time. The video part of a Live Photo follows its photo's date.
 3. Moves it to `<target>/YYYY/YYYY_MM/YYYY_MM_DD/`.
@@ -45,6 +45,15 @@ if you un-favorite it in Immich, it stays that way.
 
 Safety: if the target folder does not exist (NAS not mounted) the run stops. Only one run at a
 time. In the inbox, recently modified files are skipped.
+
+### Inbox: drop anything you want sorted
+
+`Inbox/favorieten` and `Inbox/overig` (created automatically) are for files you add by hand. Whatever
+is in `favorieten` is treated as a favorite (sidecar with rating 5, marked in Immich); `overig` and
+loose files in the inbox are not. Inbox files are **always imported**: they bypass the duplicate
+registry, and if a file with that name already exists in the day folder (even an identical one) the
+new copy is renamed `_1`, `_2`, ... and listed under "needs attention". Use `iCloud/favorieten` only
+for what comes from iCloud.
 
 ## Usage (without Docker)
 

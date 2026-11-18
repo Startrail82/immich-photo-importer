@@ -24,7 +24,7 @@ of its own, not under a path prefix of the web UI.
 mkdir -p /mnt/photos/Import/iCloud/favorieten /mnt/photos/Import/iCloud/overig /mnt/photos/Import/Inbox /mnt/photos/Unsorted
 ```
 
-Loose files that sit directly in `Import/iCloud` are not processed. Move them to `Import/Inbox`.
+Loose files that sit directly in `Import/iCloud` are not processed. Move them to `Import/Inbox`. The subfolders `Import/Inbox/favorieten` and `Import/Inbox/overig` are created automatically: files you drop there are always imported (never discarded as duplicates), those in `favorieten` are marked as favorites.
 
 In Immich, create an external library whose import path is the `Unsorted` folder as Immich sees it.
 

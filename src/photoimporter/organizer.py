@@ -60,6 +60,11 @@ class Item:
     source: str  # favorieten | overig | inbox
     is_video: bool
 
+    @property
+    def manual(self) -> bool:
+        """Zelf aangeleverd via de Inbox: wordt altijd geimporteerd, nooit als duplicaat weggegooid."""
+        return self.source == "inbox"
+
 
 @dataclass(frozen=True)
 class PlannedItem:
@@ -103,13 +108,14 @@ def same_content(a: Path, b: Path) -> bool:
 
 
 def resolve_destination(
-    src: Path, day_dir: Path, reserved: dict[Path, Path]
+    src: Path, day_dir: Path, reserved: dict[Path, Path], force_new: bool = False
 ) -> tuple[Path, str, int]:
     """Bepaalt waar een bestand terechtkomt.
 
     Geeft (doelpad, status, volgnummer) terug. status is 'new' of 'duplicate'.
     Bij een naamconflict met andere inhoud wordt _1, _2, ... toegevoegd.
     `reserved` bevat doelpaden die in een droogloop al 'ingenomen' zijn.
+    force_new: ook een identiek bestand krijgt een nieuwe naam (handmatige import via de Inbox).
     """
     stem, suffix = src.stem, src.suffix
     n = 0
@@ -117,12 +123,12 @@ def resolve_destination(
         name = f"{stem}{suffix}" if n == 0 else f"{stem}_{n}{suffix}"
         candidate = day_dir / name
         if candidate in reserved:
-            if same_content(src, reserved[candidate]):
+            if not force_new and same_content(src, reserved[candidate]):
                 return candidate, "duplicate", n
             n += 1
             continue
         if candidate.exists():
-            if same_content(src, candidate):
+            if not force_new and same_content(src, candidate):
                 return candidate, "duplicate", n
             n += 1
             continue
@@ -149,12 +155,12 @@ def move_file(src: Path, dest: Path) -> None:
     src.unlink()
 
 
-def remove_empty_dirs(root: Path) -> int:
-    """Ruimt lege submappen op (de bronmap zelf blijft staan)."""
+def remove_empty_dirs(root: Path, keep: tuple[Path, ...] = ()) -> int:
+    """Ruimt lege submappen op (de bronmap zelf en de mappen in `keep` blijven staan)."""
     removed = 0
     for dirpath, _dirnames, _filenames in os.walk(root, topdown=False):
         path = Path(dirpath)
-        if path == root:
+        if path == root or path in keep:
             continue
         try:
             path.rmdir()
@@ -167,6 +173,14 @@ def remove_empty_dirs(root: Path) -> int:
 # ----------------------------------------------------------------------------
 # Stappen van een run
 # ----------------------------------------------------------------------------
+INBOX_FAVORITES = "favorieten"
+INBOX_OTHER = "overig"
+
+
+def _inbox_dirs(cfg: Config) -> tuple[Path, ...]:
+    return (cfg.source_inbox / INBOX_FAVORITES, cfg.source_inbox / INBOX_OTHER)
+
+
 def collect_items(
     cfg: Config, store: Store, run_id: int, log: RunLog, stats: RunStats
 ) -> list[Item]:
@@ -183,6 +197,12 @@ def collect_items(
             log.warn(step, f"bronmap '{name}' bestaat niet of is niet bereikbaar: {root}")
             continue
         found = 0
+        if name == "inbox" and not cfg.dry_run:
+            for sub in _inbox_dirs(cfg):
+                try:
+                    sub.mkdir(exist_ok=True)
+                except OSError as exc:
+                    log.warn(step, f"kan inbox-submap niet aanmaken: {sub} ({exc})")
         for dirpath, dirnames, filenames in os.walk(root):
             dirnames.sort()
             for filename in sorted(filenames):
@@ -202,7 +222,11 @@ def collect_items(
                     stats.skipped += 1
                     log.info(step, f"nog in gebruik (te recent gewijzigd), volgende run: {path.name}", path)
                     continue
-                items.append(Item(path, favorite, name, kind == "video"))
+                is_fav = favorite
+                if name == "inbox":
+                    parts = path.relative_to(root).parts
+                    is_fav = len(parts) > 1 and parts[0].lower() == INBOX_FAVORITES
+                items.append(Item(path, is_fav, name, kind == "video"))
                 found += 1
         log.info(step, f"bron '{name}': {found} bestand(en) gevonden in {root}")
     stats.scanned = len(items)
@@ -261,6 +285,8 @@ def process_one(
     day_dir = cfg.target / f"{when:%Y}" / f"{when:%Y_%m}" / f"{when:%Y_%m_%d}"
     sha = sha256_of(item.path)
     known = store.get_imported(sha)
+    if item.manual:
+        known = None  # handmatig aangeleverd: altijd importeren
     if known is not None:
         # Ooit binnengehaald (hash zoals het uit iCloud/Inbox kwam): er is niets te doen, ook niet als het bestand
         # inmiddels verplaatst, hernoemd, aangepast of verwijderd is.
@@ -276,7 +302,7 @@ def process_one(
             _favorite_tail(item, dest, prefix, cfg, store, log, stats)
         return
 
-    twin = _same_image_twin(item.path, day_dir) if day_dir.is_dir() else None
+    twin = None if item.manual else (_same_image_twin(item.path, day_dir) if day_dir.is_dir() else None)
     if twin is not None:
         # Zelfde beeld onder een andere naam/extensie, of met aangepaste metadata (oude bestanden zonder registratie).
         if not dry:
@@ -287,7 +313,7 @@ def process_one(
         _favorite_tail(item, twin, prefix, cfg, store, log, stats)
         return
 
-    dest, status, number = resolve_destination(item.path, day_dir, reserved)
+    dest, status, number = resolve_destination(item.path, day_dir, reserved, force_new=item.manual)
     shown = dest.relative_to(cfg.target)
 
     if status == "duplicate":
@@ -305,16 +331,18 @@ def process_one(
         else:
             move_file(item.path, dest)
         stats.moved += 1
-        if not dry:
+        if not dry and store.get_imported(sha) is None:
             store.add_imported(sha, item.path.name, dest.stat().st_size, str(dest), item.source)
         if number > 0:
             stats.renamed += 1
-            log.warn(prefix, f"naamconflict met andere inhoud, hernoemd naar {dest.name}", item.path)
+            reason = (
+                "bestond al; de nieuwe kopie is hernoemd (handmatige import via de Inbox)"
+                if item.manual
+                else "andere inhoud dan bestaand bestand met dezelfde naam"
+            )
+            log.warn(prefix, f"naamconflict, hernoemd naar {dest.name} ({reason})", item.path)
             if not dry:
-                store.add_review(
-                    run_id, "renamed", str(dest),
-                    f"andere inhoud dan bestaand bestand met dezelfde naam; origineel heette {item.path.name}",
-                )
+                store.add_review(run_id, "renamed", str(dest), f"{reason}; origineel heette {item.path.name}")
         if planned.fallback:
             stats.date_fallbacks += 1
             if not dry:
@@ -401,7 +429,7 @@ def _cleanup(cfg, log) -> None:
     if cfg.dry_run:
         return
     removed = sum(
-        remove_empty_dirs(root)
+        remove_empty_dirs(root, _inbox_dirs(cfg))
         for root in (cfg.source_favorites, cfg.source_other, cfg.source_inbox)
         if root.is_dir()
     )

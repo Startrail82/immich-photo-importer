@@ -86,14 +86,43 @@ def test_moved_or_deleted_file_is_never_placed_again(env):
 
 
 @needs_exiftool
-def test_same_file_dropped_in_inbox_is_a_duplicate(env):
+def test_inbox_always_imports_identical_file_as_renamed_copy(env):
     cfg, store, dirs = env
     first = make_jpeg(dirs["other"] / "IMG_7.jpg", (8, 8, 8), "2024:07:08 09:10:11")
     data = first.read_bytes()
     run_import(cfg, store)
-    (dirs["inbox"] / "handmatig.jpg").write_bytes(data)
+    (dirs["inbox"] / "overig").mkdir(exist_ok=True)
+    (dirs["inbox"] / "overig" / "IMG_7.jpg").write_bytes(data)
     result = run_import(cfg, store)
-    assert result.stats.duplicates_removed == 1
+    d = day(dirs, 2024, 7, 8)
+    assert sorted(p.name for p in d.iterdir()) == ["IMG_7.jpg", "IMG_7_1.jpg"]
+    assert result.stats.duplicates_removed == 0 and result.stats.renamed == 1
+
+
+@needs_exiftool
+def test_inbox_favorieten_marks_favorite_and_renames_existing(env):
+    cfg, store, dirs = env
+    first = make_jpeg(dirs["other"] / "IMG_8.jpg", (6, 6, 6), "2024:08:09 10:11:12")
+    data = first.read_bytes()
+    run_import(cfg, store)
+    (dirs["inbox"] / "favorieten").mkdir(exist_ok=True)
+    (dirs["inbox"] / "favorieten" / "IMG_8.jpg").write_bytes(data)
+    run_import(cfg, store)
+    placed = day(dirs, 2024, 8, 9) / "IMG_8_1.jpg"
+    assert placed.exists() and sidecar_path(placed).exists()
+    assert store.list_pending_favorites() == [str(placed)]
+    assert not sidecar_path(day(dirs, 2024, 8, 9) / "IMG_8.jpg").exists()
+
+
+@needs_exiftool
+def test_inbox_root_and_other_subfolders_are_not_favorites_and_folders_are_created(env):
+    cfg, store, dirs = env
+    make_jpeg(dirs["inbox"] / "los.jpg", (1, 1, 9), "2024:09:10 11:12:13")
+    make_jpeg(dirs["inbox"] / "overig" / "a.jpg", (1, 9, 1), "2024:09:10 11:12:14")
+    run_import(cfg, store)
+    assert (dirs["inbox"] / "favorieten").is_dir() and (dirs["inbox"] / "overig").is_dir()
+    assert store.list_pending_favorites() == []
+    assert len(list(day(dirs, 2024, 9, 10).iterdir())) == 2
 
 
 @needs_exiftool

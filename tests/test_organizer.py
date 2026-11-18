@@ -176,7 +176,8 @@ def test_empty_inbox_subfolder_is_cleaned_up(env):
     make_jpeg(dirs["inbox"] / "sd-kaart" / "DCIM" / "IMG_70.jpg", (2, 2, 2), "2024:05:05 05:05:05")
     run_import(cfg, store)
     assert dirs["inbox"].exists()
-    assert list(dirs["inbox"].iterdir()) == []
+    # de vaste submappen blijven staan, de rest is opgeruimd
+    assert sorted(p.name for p in dirs["inbox"].iterdir()) == ["favorieten", "overig"]
 
 
 def test_missing_target_aborts_without_creating_it(env):

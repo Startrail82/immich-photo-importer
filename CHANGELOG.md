@@ -2,6 +2,12 @@
 
 Every commit bumps the version (minor for features, patch for fixes).
 
+## 0.6.0
+
+- Inbox now has `favorieten` and `overig` subfolders (created automatically). Inbox files are always
+  imported: no duplicate registry, a name conflict (even identical content) gives a renamed copy
+  (`_1`, ...). Files in `Inbox/favorieten` get the rating sidecar and are marked as favorite in Immich.
+
 ## 0.5.4
 
 - A file whose hash is in the registry is never placed again, even if it was moved, renamed or
