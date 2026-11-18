@@ -103,6 +103,9 @@ class Config:
     schedule_time: str = "12:00"
     schedule_cron: str = ""  # indien ingevuld (5 velden) gaat dit voor op schedule_time
     schedule_enabled: bool = True
+    # Tweede planning: alleen de Immich-stap (favorieten markeren, sidecars), zonder iCloud-download of sortering
+    favorites_cron: str = "0 7-23 * * *"
+    favorites_schedule_enabled: bool = True
 
     @property
     def cron_expression(self) -> str:
@@ -163,6 +166,8 @@ class Config:
             schedule_time=os.environ.get("PI_SCHEDULE_TIME", "12:00").strip() or "12:00",
             schedule_cron=os.environ.get("PI_SCHEDULE_CRON", "").strip(),
             schedule_enabled=_env_bool("PI_SCHEDULE_ENABLED", True),
+            favorites_cron=os.environ.get("PI_FAVORITES_CRON", "").strip() or "0 7-23 * * *",
+            favorites_schedule_enabled=_env_bool("PI_FAVORITES_SCHEDULE_ENABLED", True),
         )
         cfg.validate()
         return cfg
@@ -188,6 +193,10 @@ class Config:
             parse_cron(self.cron_expression)
         except CronError as exc:
             raise ConfigError(f"ongeldige planning: {exc}") from None
+        try:
+            parse_cron(self.favorites_cron)
+        except CronError as exc:
+            raise ConfigError(f"ongeldige planning voor de favorieten-sync: {exc}") from None
         if self.icloud_version not in ("original", "adjusted", "both"):
             raise ConfigError("PI_ICLOUD_VERSION moet original, adjusted of both zijn")
         if self.icloud_keep_days is not None and self.icloud_keep_days < 0:

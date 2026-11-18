@@ -72,6 +72,7 @@ class WebApp:
         return {
             "settings": {**self.settings.current(), **self.settings.secret_flags()},
             "schedule": self.settings.describe_schedule(),
+            "favorites_schedule": self.settings.describe_schedule(expression=self.settings.current()["favorites_cron"]),
             "libraries": {**self.settings.known_libraries(), "busy": self.libraries_busy},
             "icloud_configured": self.settings.effective().icloud_enabled,
             "icloud_test": self.icloud_test_state(),
@@ -131,11 +132,13 @@ class WebApp:
         if last and last.get("stats"):
             last["stats"] = json.loads(last["stats"])
         nxt = self.scheduler.next_run
+        nxt_fav = self.scheduler.next_favorites_run
         eff = self.settings.effective()
         return {
             "version": __version__,
             "running": self.scheduler.running or bool(last and last["status"] == "bezig"),
             "next_run": nxt.strftime("%Y-%m-%d %H:%M") if nxt else None,
+            "next_favorites_run": nxt_fav.strftime("%Y-%m-%d %H:%M") if nxt_fav else None,
             "icloud_status": self.store.get_state(STATE_KEY, "onbekend"),
             "icloud_busy": self.libraries_busy or self.icloud_test_state()["busy"],
             "icloud_configured": eff.icloud_enabled,

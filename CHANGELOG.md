@@ -2,6 +2,15 @@
 
 Every commit bumps the version (minor for features, patch for fixes).
 
+## 0.9.1
+
+- Two separate schedules. The iCloud run (download, sort, Immich) keeps its cron; a new favorites sync
+  runs only the Immich step (mark pending favorites, write/clear rating sidecars) on its own cron, with
+  no iCloud download and no sorting. Settings: `favorites_cron` / `favorites_schedule_enabled` (env
+  `PI_FAVORITES_CRON`, default `0 7-23 * * *`, and `PI_FAVORITES_SCHEDULE_ENABLED`). When both fall on
+  the same minute, only the full run is started. "Nu uitvoeren" remains a full run. Favorites-sync runs
+  appear in the Runs tab as "gepland (favorieten)".
+
 ## 0.9.0
 
 - Removing the heart in Immich now also clears the 5 stars in the `.xmp` (only an `xmp:Rating` of 5 is

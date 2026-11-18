@@ -9,7 +9,7 @@ from typing import Callable
 
 from .config import Config
 from .cron import parse as parse_cron
-from .organizer import RunAlreadyActive, RunResult, run_import
+from .organizer import RunAlreadyActive, RunResult, run_favorites_sync, run_import
 from .settings import SettingsManager
 from .store import Store
 
@@ -33,11 +33,13 @@ class Scheduler:
         runner: Callable[..., RunResult] = run_import,
         now: Callable[[], datetime] = datetime.now,
         settings: SettingsManager | None = None,
+        favorites_runner: Callable[..., RunResult] = run_favorites_sync,
     ):
         self.cfg = cfg
         self.store = store
         self.settings = settings
         self._runner = runner
+        self._favorites_runner = favorites_runner
         self._now = now
         self._wake = threading.Event()
         self._stop = threading.Event()
@@ -83,10 +85,27 @@ class Scheduler:
             return None
         return parse_cron(cfg.cron_expression).next_after(self._now())
 
+    @property
+    def next_favorites_run(self) -> datetime | None:
+        cfg = self.effective_config()
+        if not cfg.favorites_schedule_enabled:
+            return None
+        return parse_cron(cfg.favorites_cron).next_after(self._now())
+
+    def _next_target(self) -> tuple[datetime | None, str]:
+        """Het eerstvolgende moment en welk soort run daar hoort: 'volledig' of 'favorieten'.
+        Vallen ze samen, dan is de volledige run genoeg (die doet de Immich-stap ook)."""
+        full, favorites = self.next_run, self.next_favorites_run
+        if full is None and favorites is None:
+            return None, "volledig"
+        if favorites is None or (full is not None and full <= favorites):
+            return full, "volledig"
+        return favorites, "favorieten"
+
     # --- intern --------------------------------------------------------------
     def _loop(self) -> None:
         while not self._stop.is_set():
-            target = self.next_run
+            target, kind = self._next_target()
             timeout = None if target is None else max(0.0, (target - self._now()).total_seconds())
             woken = self._wake.wait(timeout)
             if self._stop.is_set():
@@ -98,15 +117,17 @@ class Scheduler:
                 self._run_once("handmatig")
             elif woken or target is None:
                 continue  # instellingen gewijzigd (of niets ingepland): opnieuw plannen
+            elif kind == "favorieten":
+                self._run_once("gepland (favorieten)", self._favorites_runner)
             else:
                 self._run_once("gepland")
 
-    def _run_once(self, trigger: str) -> None:
+    def _run_once(self, trigger: str, runner: Callable[..., RunResult] | None = None) -> None:
         with self._lock:
             self._running = True
         try:
             log.info("%s run gestart", trigger)
-            result = self._runner(self.effective_config(), self.store, trigger)
+            result = (runner or self._runner)(self.effective_config(), self.store, trigger)
             log.info("run %s klaar: %s", result.run_id, result.status)
         except RunAlreadyActive:
             log.warning("run overgeslagen: er loopt al een run (bv. via de opdrachtregel)")

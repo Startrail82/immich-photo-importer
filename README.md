@@ -53,7 +53,8 @@ rescanned the new location, the next run restores the favorite. A favorite you s
 written to its sidecar at the next run, so move the photo after that run. If you remove the heart of a
 photo the tool already knows, the next run also sets the 5 stars in its `.xmp` to 0, so it does not come
 back as favorite after a move (a 5-star rating you gave on purpose without heart is cleared too). The
-whole mechanism can be switched off in Settings (or with `PI_FAVORITES_FOLLOW_FILE=false`).
+favorites sync has its own schedule (default hourly 07:00-23:00, `PI_FAVORITES_CRON`) that runs only the
+Immich step, independent of the iCloud schedule. The whole mechanism can be switched off in Settings (or with `PI_FAVORITES_FOLLOW_FILE=false`).
 
 Safety: if the target folder does not exist (NAS not mounted) the run stops. Only one run at a
 time. In the inbox, recently modified files are skipped.

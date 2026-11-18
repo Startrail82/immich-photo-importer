@@ -12,7 +12,7 @@ from .runlog import RunLog
 from .sidecar import clear_rating, sidecar_path, write_rating_sidecar
 from .store import Store
 
-STEP = "6/6 Immich"
+STEP = "6/6 Immich"  # standaardnaam van de stap in een volledige run
 
 
 def to_immich_path(cfg: Config, host_path: Path) -> str:
@@ -39,12 +39,13 @@ def sync_immich(
     client: ImmichClient | None = None,
     sleep: Callable[[float], None] = time.sleep,
     clock: Callable[[], float] = time.monotonic,
+    step: str = STEP,
 ) -> None:
     if cfg.dry_run:
-        log.info(STEP, "overgeslagen (droogloop)")
+        log.info(step, "overgeslagen (droogloop)")
         return
     if not cfg.immich_enabled:
-        log.info(STEP, "Immich-koppeling niet ingesteld, stap overgeslagen")
+        log.info(step, "Immich-koppeling niet ingesteld, stap overgeslagen")
         return
     pending = store.list_pending_favorites()
 
@@ -57,20 +58,20 @@ def sync_immich(
                     f"geen Immich-bibliotheek gevonden met importpad {cfg.immich_target_path} "
                     "(of stel PI_IMMICH_LIBRARY_ID in)"
                 )
-            log.info(STEP, f"bibliotheekscan starten (bibliotheek {library_id})")
+            log.info(step, f"bibliotheekscan starten (bibliotheek {library_id})")
             client.scan_library(library_id)
         if pending:
-            _mark_favorites(cfg, store, log, stats, client, pending, sleep, clock)
+            _mark_favorites(cfg, store, log, stats, client, pending, sleep, clock, step)
         if cfg.favorites_follow_file:
-            _sync_rating_markers(cfg, store, log, stats, client)
+            _sync_rating_markers(cfg, store, log, stats, client, step)
         else:
-            log.info(STEP, "favorieten volgen het bestand: uitgeschakeld in de instellingen")
+            log.info(step, "favorieten volgen het bestand: uitgeschakeld in de instellingen")
     except ImmichError as exc:
         stats.errors += 1
-        log.error(STEP, f"Immich-fout: {exc}")
+        log.error(step, f"Immich-fout: {exc}")
 
 
-def _sync_rating_markers(cfg, store, log, stats, client) -> None:
+def _sync_rating_markers(cfg, store, log, stats, client, step) -> None:
     """Laat een favoriet met het bestand meeverhuizen.
 
     Immich bewaart een favoriet enkel in zijn database; verplaats je een bestand, dan is het voor
@@ -95,7 +96,7 @@ def _sync_rating_markers(cfg, store, log, stats, client) -> None:
                 written += 1
         except OSError as exc:
             failed += 1
-            log.warn(STEP, f"sidecar schrijven mislukt voor {host.name}: {exc}", host)
+            log.warn(step, f"sidecar schrijven mislukt voor {host.name}: {exc}", host)
     stats.sidecars += written
 
     seen = store.fav_seen_ids()
@@ -113,20 +114,20 @@ def _sync_rating_markers(cfg, store, log, stats, client) -> None:
                     try:
                         if clear_rating(host):
                             cleared += 1
-                            log.info(STEP, f"hartje weggehaald: 5 sterren uit de sidecar gehaald voor {host.name}", host)
+                            log.info(step, f"hartje weggehaald: 5 sterren uit de sidecar gehaald voor {host.name}", host)
                     except OSError as exc:
-                        log.warn(STEP, f"sidecar aanpassen mislukt voor {host.name}: {exc}", host)
+                        log.warn(step, f"sidecar aanpassen mislukt voor {host.name}: {exc}", host)
             continue
         new_ids.append(asset_id)
         if not item.get("isFavorite"):
             to_mark.append(asset_id)
-            log.info(STEP, f"rating 5, nog geen favoriet: {PurePosixPath(item.get('originalPath') or asset_id).name}")
+            log.info(step, f"rating 5, nog geen favoriet: {PurePosixPath(item.get('originalPath') or asset_id).name}")
     if to_mark:
         client.set_favorite(to_mark)
         stats.favorites_set += len(to_mark)
     store.add_fav_seen(new_ids)
     log.info(
-        STEP,
+        step,
         f"favorieten en sidecars: {written} sidecar(s) geschreven voor favorieten in Immich"
         + (f" ({failed} mislukt)" if failed else "")
         + f", {len(to_mark)} foto(s) met rating 5 als favoriet gemarkeerd"
@@ -134,15 +135,15 @@ def _sync_rating_markers(cfg, store, log, stats, client) -> None:
     )
 
 
-def _mark_favorites(cfg, store, log, stats, client, pending, sleep, clock) -> None:
+def _mark_favorites(cfg, store, log, stats, client, pending, sleep, clock, step) -> None:
     waiting: dict[str, str] = {}
     for host in pending:
         try:
             waiting[host] = to_immich_path(cfg, Path(host))
         except ValueError:
-            log.warn(STEP, f"pad ligt niet onder de doelmap, blijft in de wachtrij: {host}", host)
+            log.warn(step, f"pad ligt niet onder de doelmap, blijft in de wachtrij: {host}", host)
 
-    log.info(STEP, f"{len(waiting)} favoriet(en) in de wachtrij; wachten tot Immich ze kent (max {cfg.immich_wait_seconds}s)")
+    log.info(step, f"{len(waiting)} favoriet(en) in de wachtrij; wachten tot Immich ze kent (max {cfg.immich_wait_seconds}s)")
     deadline = clock() + cfg.immich_wait_seconds
     while True:
         found: dict[str, str] = {}
@@ -155,13 +156,13 @@ def _mark_favorites(cfg, store, log, stats, client, pending, sleep, clock) -> No
             for host in found:
                 store.mark_favorite_done(host)
                 del waiting[host]
-                log.info(STEP, f"favoriet gemarkeerd in Immich: {Path(host).name}", host)
+                log.info(step, f"favoriet gemarkeerd in Immich: {Path(host).name}", host)
             stats.favorites_set += len(found)
         if not waiting or clock() >= deadline:
             break
-        log.info(STEP, f"{len(waiting)} foto('s) nog niet in Immich, opnieuw proberen over {cfg.immich_poll_seconds}s")
+        log.info(step, f"{len(waiting)} foto('s) nog niet in Immich, opnieuw proberen over {cfg.immich_poll_seconds}s")
         sleep(cfg.immich_poll_seconds)
 
     stats.favorites_waiting = len(waiting)
     if waiting:
-        log.warn(STEP, f"{len(waiting)} favoriet(en) nog niet gevonden in Immich, volgende run opnieuw")
+        log.warn(step, f"{len(waiting)} favoriet(en) nog niet gevonden in Immich, volgende run opnieuw")

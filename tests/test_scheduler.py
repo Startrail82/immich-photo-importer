@@ -142,3 +142,59 @@ def test_cli_icloud_check_without_credentials(env, monkeypatch, tmp_path):
     monkeypatch.setenv("PI_DATA_DIR", str(tmp_path / "d"))
     monkeypatch.setenv("PI_TARGET", str(tmp_path / "t"))
     assert main(["icloud-check"]) == 2
+
+
+ICLOUD_CRON = "0 9,12,18,21 * * *"
+FAVORITES_CRON = "0 7-23 * * *"
+
+
+def two_schedules(cfg, **extra):
+    return dataclasses.replace(cfg, schedule_cron=ICLOUD_CRON, favorites_cron=FAVORITES_CRON, **extra)
+
+
+def test_next_target_picks_the_nearest_schedule_and_prefers_the_full_run_on_a_tie(env):
+    cfg, store, _ = env
+    clock = {"now": datetime(2026, 11, 15, 13, 30)}
+    scheduler = Scheduler(two_schedules(cfg), store, now=lambda: clock["now"])
+    assert scheduler._next_target() == (datetime(2026, 11, 15, 14, 0), "favorieten")
+    clock["now"] = datetime(2026, 11, 15, 17, 30)
+    assert scheduler._next_target() == (datetime(2026, 11, 15, 18, 0), "volledig")  # valt samen: volledig
+    clock["now"] = datetime(2026, 11, 15, 23, 30)
+    assert scheduler._next_target() == (datetime(2026, 11, 16, 7, 0), "favorieten")
+
+
+def test_favorites_schedule_can_be_disabled(env):
+    cfg, store, _ = env
+    clock = {"now": datetime(2026, 11, 15, 13, 30)}
+    scheduler = Scheduler(two_schedules(cfg, favorites_schedule_enabled=False), store, now=lambda: clock["now"])
+    assert scheduler.next_favorites_run is None
+    assert scheduler._next_target() == (datetime(2026, 11, 15, 18, 0), "volledig")
+    both_off = Scheduler(
+        two_schedules(cfg, favorites_schedule_enabled=False, schedule_enabled=False), store, now=lambda: clock["now"]
+    )
+    assert both_off._next_target()[0] is None
+
+
+def test_favorites_run_uses_its_own_runner_and_label(env):
+    cfg, store, _ = env
+    full: list[str] = []
+    fav: list[str] = []
+    clock = {"now": datetime(2026, 11, 15, 13, 59, 59, 500000)}
+    scheduler = Scheduler(
+        two_schedules(cfg), store, runner=fake_runner(full), favorites_runner=fake_runner(fav), now=lambda: clock["now"]
+    )
+    started = threading.Event()
+
+    def advance():
+        started.wait()
+        time.sleep(0.6)
+        clock["now"] = datetime(2026, 11, 15, 14, 0, 0, 100000)
+
+    threading.Thread(target=advance, daemon=True).start()
+    scheduler.start()
+    started.set()
+    try:
+        assert wait_for(lambda: fav == ["gepland (favorieten)"], seconds=5)
+        assert full == []
+    finally:
+        scheduler.stop()

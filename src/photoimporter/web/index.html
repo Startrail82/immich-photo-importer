@@ -210,6 +210,8 @@
     <div class="col">
     <section class="card">
       <h2>Planning</h2>
+      <h3>iCloud-run</h3>
+      <p class="hint" style="margin-top:0">Volledige run: iCloud downloaden, alles sorteren en Immich bijwerken. De knop "Nu uitvoeren" doet ook dit.</p>
       <label class="check"><input type="checkbox" id="sEnabled"><span>Automatisch uitvoeren volgens de planning
         <small>Uit = alleen de knop "Nu uitvoeren" start een run.</small></span></label>
       <label class="field" for="sCron" style="margin-top:10px">Cron-expressie</label>
@@ -217,6 +219,13 @@
       <p class="hint">Vijf velden: minuut, uur, dag van de maand, maand, weekdag. Bijvoorbeeld <code>0 12 * * *</code> is elke dag om 12:00.</p>
       <div class="quick" id="quick"></div>
       <div class="explain" id="sExplain"></div>
+      <h3 style="margin-top:20px">Favorieten-sync</h3>
+      <p class="hint" style="margin-top:0">Alleen de Immich-stap: wachtende favorieten markeren en de 5-sterren-sidecars bijhouden. Geen iCloud-download en geen sortering.</p>
+      <label class="check"><input type="checkbox" id="sFavEnabled"><span>Favorieten-sync automatisch uitvoeren
+        <small>Uit = favorieten worden enkel bijgewerkt tijdens de iCloud-run.</small></span></label>
+      <label class="field" for="sFavCron" style="margin-top:10px">Cron-expressie</label>
+      <input type="text" class="mono" id="sFavCron" spellcheck="false" autocomplete="off" placeholder="0 7-23 * * *">
+      <div class="explain" id="sFavExplain"></div>
     </section>
     <section class="card">
       <h2>iCloud-bibliotheken</h2>
@@ -278,7 +287,8 @@ function renderStatus(s) {
   else if (last && last.status !== "ok") { dot = "err"; text = last.status === "mislukt" ? "Laatste run mislukt" : "Laatste run met fouten"; }
   $("dot").className = "dot " + dot; $("state").textContent = text;
   const bits = [];
-  bits.push(s.next_run ? "Volgende run: " + fmt(s.next_run) : "Planner uitgeschakeld");
+  bits.push(s.next_run ? "Volgende iCloud-run: " + fmt(s.next_run) : "iCloud-planning uit");
+  bits.push(s.next_favorites_run ? "Volgende favorieten-sync: " + fmt(s.next_favorites_run) : "favorieten-sync uit");
   bits.push("iCloud: " + (!s.icloud_configured ? "niet ingesteld" : ({ ok: "in orde", fout: "laatste poging mislukt", wacht_op_code: "wacht op code", uit: "uit", onbekend: "nog niet gebruikt" })[s.icloud_status] || s.icloud_status));
   bits.push("Immich: " + (s.immich_configured ? "gekoppeld" : "niet ingesteld"));
   if (s.pending_favorites) bits.push(s.pending_favorites + " favoriet(en) in wachtrij");
@@ -434,20 +444,23 @@ for (const [label, expr] of QUICK) {
 }
 
 let previewTimer = null;
-function previewCron() {
-  clearTimeout(previewTimer);
-  previewTimer = setTimeout(async () => {
-    const expr = $("sCron").value;
+const previewTimers = {};
+function previewCronFor(inputId, boxId) {
+  clearTimeout(previewTimers[inputId]);
+  previewTimers[inputId] = setTimeout(async () => {
+    const expr = $(inputId).value;
     const { data } = await api("/api/schedule/preview?cron=" + encodeURIComponent(expr));
-    const box = $("sExplain"); box.replaceChildren();
-    $("sCron").classList.toggle("bad", !data.valid);
+    const box = $(boxId); box.replaceChildren();
+    $(inputId).classList.toggle("bad", !data.valid);
     if (!data.valid) { box.className = "explain bad"; box.textContent = data.error; return; }
     box.className = "explain";
     box.append(el("b", null, "Dit betekent: " + data.text + "."), el("br"),
       document.createTextNode("Eerstvolgende uitvoeringen: " + data.upcoming.join("  ·  ")));
   }, 250);
 }
-$("sCron").oninput = previewCron;
+function previewCron() { previewCronFor("sCron", "sExplain"); previewCronFor("sFavCron", "sFavExplain"); }
+$("sCron").oninput = () => previewCronFor("sCron", "sExplain");
+$("sFavCron").oninput = () => previewCronFor("sFavCron", "sFavExplain");
 
 function libLabel(name) {
   if (name === "PrimarySync") return "Persoonlijke bibliotheek";
@@ -529,6 +542,7 @@ $("testImBtn").onclick = async () => {
 function fillSettings(d) {
   const s = d.settings;
   $("sEnabled").checked = s.schedule_enabled; $("sCron").value = s.schedule_cron;
+  $("sFavEnabled").checked = s.favorites_schedule_enabled; $("sFavCron").value = s.favorites_cron;
   $("sAlbum").value = s.favorites_album; $("sVersion").value = s.download_version; $("sVersionWarn").hidden = s.download_version !== "adjusted"; $("sDelete").checked = s.delete_enabled; $("sDays").value = s.keep_days;
   deleteWasOn = s.delete_enabled; $("sDeleteBox").hidden = !s.delete_enabled;
   selLibs.clear(); for (const n of s.libraries) selLibs.add(n);
@@ -552,7 +566,8 @@ $("saveBtn").onclick = async () => {
   if (del && !deleteWasOn && !confirm("Wissen in iCloud verwijdert foto's ook van je iPhone (30 dagen in 'Recent verwijderd'). Weet je het zeker?")) return;
   $("saveBtn").disabled = true;
   const body = {
-    schedule_enabled: $("sEnabled").checked, schedule_cron: $("sCron").value, libraries: [...selLibs],
+    schedule_enabled: $("sEnabled").checked, schedule_cron: $("sCron").value,
+    favorites_schedule_enabled: $("sFavEnabled").checked, favorites_cron: $("sFavCron").value, libraries: [...selLibs],
     favorites_album: $("sAlbum").value, download_version: $("sVersion").value, delete_enabled: del, keep_days: $("sDays").value,
     icloud_username: $("sIcUser").value, icloud_password: $("sIcPass").value, icloud_web_url: $("sIcWeb").value,
     immich_url: $("sImUrl").value, immich_api_key: $("sImKey").value, favorites_follow_file: $("sFollow").checked,

@@ -43,6 +43,8 @@ class SettingsManager:
         return {
             "schedule_cron": b.cron_expression,
             "schedule_enabled": b.schedule_enabled,
+            "favorites_cron": b.favorites_cron,
+            "favorites_schedule_enabled": b.favorites_schedule_enabled,
             "libraries": list(b.icloud_libraries) or ["PrimarySync"],
             "favorites_album": b.icloud_favorites_album,
             "delete_enabled": b.icloud_keep_days is not None,
@@ -91,6 +93,8 @@ class SettingsManager:
             self._base,
             schedule_cron=s["schedule_cron"],
             schedule_enabled=bool(s["schedule_enabled"]),
+            favorites_cron=s["favorites_cron"],
+            favorites_schedule_enabled=bool(s["favorites_schedule_enabled"]),
             icloud_libraries=() if libs == ("PrimarySync",) else libs,
             icloud_favorites_album=s["favorites_album"],
             icloud_keep_days=int(s["keep_days"]) if s["delete_enabled"] else None,
@@ -158,6 +162,14 @@ class SettingsManager:
                     raise SettingsError(f"planning: {exc}") from None
             if "schedule_enabled" in data:
                 new["schedule_enabled"] = bool(data["schedule_enabled"])
+            if "favorites_cron" in data:
+                expr = str(data["favorites_cron"]).strip()
+                try:
+                    new["favorites_cron"] = parse(expr).expression
+                except CronError as exc:
+                    raise SettingsError(f"planning favorieten-sync: {exc}") from None
+            if "favorites_schedule_enabled" in data:
+                new["favorites_schedule_enabled"] = bool(data["favorites_schedule_enabled"])
             if "libraries" in data:
                 libs = data["libraries"]
                 if not isinstance(libs, list) or not libs:

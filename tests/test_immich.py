@@ -387,3 +387,24 @@ def test_follow_file_can_be_switched_off(env, fake):
     assert not photo.with_name(photo.name + ".xmp").exists()
     assert fake.state.favorite_calls == []
     assert result.stats.sidecars == 0 and result.stats.favorites_set == 0
+
+
+def test_favorites_only_run_syncs_immich_but_does_not_sort_or_download(env, fake):
+    from photoimporter.organizer import run_favorites_sync
+
+    cfg, store, dirs = env
+    cfg = immich_cfg(cfg, fake)
+    photo, immich_path = _put_photo(dirs)
+    fake.state.asset_info["a1"] = {"originalPath": immich_path, "isFavorite": True}
+    loose = dirs["inbox"] / "los.jpg"
+    loose.write_bytes(b"jpeg")
+    old = loose.stat().st_mtime - 3600
+    import os
+
+    os.utime(loose, (old, old))
+
+    result = run_favorites_sync(cfg, store)
+
+    assert photo.with_name(photo.name + ".xmp").is_file()  # sidecar voor de favoriet
+    assert loose.exists()  # niet gesorteerd
+    assert result.stats.moved == 0 and result.stats.downloaded == 0

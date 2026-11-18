@@ -263,3 +263,15 @@ def test_follow_file_setting_defaults_on_and_can_be_switched_off(web):
     status, data = post_json(base + "/api/settings", {"favorites_follow_file": False})
     assert status == 200 and data["settings"]["favorites_follow_file"] is False
     assert scheduler.effective_config().favorites_follow_file is False
+
+
+def test_favorites_schedule_settings_are_saved_and_validated(web):
+    base, store, scheduler, gate, calls = web
+    s = json.loads(call(base + "/api/settings")[1])["settings"]
+    assert s["favorites_cron"] == "0 7-23 * * *" and s["favorites_schedule_enabled"] is True
+    status, data = post_json(base + "/api/settings", {"favorites_cron": "0 8-20 * * *", "favorites_schedule_enabled": False})
+    assert status == 200 and data["settings"]["favorites_cron"] == "0 8-20 * * *"
+    eff = scheduler.effective_config()
+    assert eff.favorites_cron == "0 8-20 * * *" and eff.favorites_schedule_enabled is False
+    status, data = post_json(base + "/api/settings", {"favorites_cron": "elk uur"})
+    assert status == 422 and "favorieten" in data["error"]

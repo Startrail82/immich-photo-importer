@@ -395,12 +395,18 @@ def _favorite_tail(item, dest, prefix, cfg, store, log, stats) -> None:
     store.add_pending_favorite(str(dest))
 
 
-def _run(cfg: Config, store: Store, run_id: int, log: RunLog, stats: RunStats) -> None:
+def _run(cfg: Config, store: Store, run_id: int, log: RunLog, stats: RunStats, only_favorites: bool = False) -> None:
     mode = "DROOGLOOP (er wordt niets gewijzigd)" if cfg.dry_run else "echte run"
+    if only_favorites:
+        mode += ", alleen favorieten-sync (geen iCloud, geen sortering)"
     log.info("start", f"{mode}; doelmap: {cfg.target}")
     if not cfg.target.is_dir():
         # Bewust geen mkdir: als de NAS niet gemount is, mag er geen lokale kopie ontstaan.
         raise RuntimeError(f"doelmap bestaat niet of is niet bereikbaar: {cfg.target}")
+
+    if only_favorites:
+        sync_immich(cfg, store, log, stats, moved_any=False, step="1/1 Immich")
+        return
 
     # Eerst iCloud binnenhalen. Mislukt dat, dan sorteren we gewoon wat er al staat (ook de inbox).
     download_icloud(cfg, store, log, stats)
@@ -445,7 +451,12 @@ def _cleanup(cfg, log) -> None:
         log.info(step, f"{removed} lege submap(pen) opgeruimd")
 
 
-def run_import(cfg: Config, store: Store, trigger: str = "handmatig") -> RunResult:
+def run_favorites_sync(cfg: Config, store: Store, trigger: str = "gepland (favorieten)") -> RunResult:
+    """Voert enkel de Immich-stap uit (favorieten markeren, sidecars). Gooit RunAlreadyActive als er al een run loopt."""
+    return run_import(cfg, store, trigger, only_favorites=True)
+
+
+def run_import(cfg: Config, store: Store, trigger: str = "handmatig", only_favorites: bool = False) -> RunResult:
     """Voert een volledige run uit. Gooit RunAlreadyActive als er al een loopt."""
     with run_lock(cfg.data_dir):
         run_id = store.start_run(trigger, cfg.dry_run)
@@ -453,7 +464,7 @@ def run_import(cfg: Config, store: Store, trigger: str = "handmatig") -> RunResu
         log = RunLog(store, run_id)
         status = "ok"
         try:
-            _run(cfg, store, run_id, log, stats)
+            _run(cfg, store, run_id, log, stats, only_favorites)
             if stats.errors:
                 status = "ok_met_fouten"
         except Exception as exc:

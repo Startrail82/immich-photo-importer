@@ -91,7 +91,12 @@ def daemon(cfg: Config, web: bool = False) -> int:
         app.start()
         log.info("webinterface luistert op poort %d", app.port)
     nxt = scheduler.next_run
-    log.info("planner gestart; volgende run: %s", nxt.strftime("%Y-%m-%d %H:%M") if nxt else "uitgeschakeld")
+    nxt_fav = scheduler.next_favorites_run
+    log.info(
+        "planner gestart; volgende iCloud-run: %s; volgende favorieten-sync: %s",
+        nxt.strftime("%Y-%m-%d %H:%M") if nxt else "uitgeschakeld",
+        nxt_fav.strftime("%Y-%m-%d %H:%M") if nxt_fav else "uitgeschakeld",
+    )
     stop = threading.Event()
     for sig in (signal.SIGTERM, signal.SIGINT):
         signal.signal(sig, lambda *_: stop.set())
