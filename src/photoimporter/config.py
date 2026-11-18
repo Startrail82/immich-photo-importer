@@ -74,6 +74,8 @@ class Config:
     immich_library_id: str = ""  # leeg = automatisch zoeken op importpad
     immich_wait_seconds: int = 600  # hoe lang wachten tot Immich nieuwe bestanden kent
     immich_poll_seconds: int = 15
+    # Favorieten volgen het bestand: rating-5 sidecars (zie immich_sync). Uitzetbaar voor als Immich dit ooit zelf oplost.
+    favorites_follow_file: bool = True
 
     # iCloud-download via icloudpd (optioneel). Actief als gebruikersnaam en wachtwoord ingesteld zijn.
     icloud_username: str = ""
@@ -139,6 +141,7 @@ class Config:
             immich_library_id=os.environ.get("PI_IMMICH_LIBRARY_ID", "").strip(),
             immich_wait_seconds=_env_int("PI_IMMICH_WAIT_SECONDS", 600),
             immich_poll_seconds=_env_int("PI_IMMICH_POLL_SECONDS", 15),
+            favorites_follow_file=_env_bool("PI_FAVORITES_FOLLOW_FILE", True),
             icloud_username=os.environ.get("PI_ICLOUD_USERNAME", "").strip(),
             icloud_password=_read_secret("PI_ICLOUD_PASSWORD"),
             icloud_command=os.environ.get("PI_ICLOUD_COMMAND", "icloudpd").strip() or "icloudpd",

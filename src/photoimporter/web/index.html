@@ -191,6 +191,8 @@
         <span class="meta" id="testImMsg"></span>
       </div>
       <div id="testImOut"></div>
+      <label class="check" style="margin-top:14px"><input type="checkbox" id="sFollow"><span>Favorieten laten meeverhuizen met het bestand
+        <small>Aan = een favoriet in Immich krijgt 5 sterren in een .xmp naast de foto, en 5 sterren worden weer een favoriet (ook na verplaatsen). Haal je het hartje weg, dan gaan ook de 5 sterren uit de .xmp. Uit = Immich ongemoeid laten, bv. als Immich dit ooit zelf oplost.</small></span></label>
       <p class="hint">De tests gebruiken de waarden in dit formulier, ook als je ze nog niet hebt opgeslagen. Ze wijzigen niets.</p>
     </section>
     <section class="card">
@@ -530,7 +532,7 @@ function fillSettings(d) {
   $("sAlbum").value = s.favorites_album; $("sVersion").value = s.download_version; $("sVersionWarn").hidden = s.download_version !== "adjusted"; $("sDelete").checked = s.delete_enabled; $("sDays").value = s.keep_days;
   deleteWasOn = s.delete_enabled; $("sDeleteBox").hidden = !s.delete_enabled;
   selLibs.clear(); for (const n of s.libraries) selLibs.add(n);
-  $("sIcUser").value = s.icloud_username; $("sIcWeb").value = s.icloud_web_url; $("sImUrl").value = s.immich_url;
+  $("sIcUser").value = s.icloud_username; $("sIcWeb").value = s.icloud_web_url; $("sImUrl").value = s.immich_url; $("sFollow").checked = s.favorites_follow_file;
   $("sIcPass").value = ""; $("sImKey").value = "";
   $("sIcPassState").textContent = secretState(s.icloud_password_set); $("sImKeyState").textContent = secretState(s.immich_api_key_set);
   renderLibs(d.libraries); previewCron();
@@ -553,7 +555,7 @@ $("saveBtn").onclick = async () => {
     schedule_enabled: $("sEnabled").checked, schedule_cron: $("sCron").value, libraries: [...selLibs],
     favorites_album: $("sAlbum").value, download_version: $("sVersion").value, delete_enabled: del, keep_days: $("sDays").value,
     icloud_username: $("sIcUser").value, icloud_password: $("sIcPass").value, icloud_web_url: $("sIcWeb").value,
-    immich_url: $("sImUrl").value, immich_api_key: $("sImKey").value,
+    immich_url: $("sImUrl").value, immich_api_key: $("sImKey").value, favorites_follow_file: $("sFollow").checked,
   };
   const r = await api("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   $("saveBtn").disabled = false;

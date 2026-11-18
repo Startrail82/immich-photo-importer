@@ -51,6 +51,7 @@ class SettingsManager:
             "icloud_username": b.icloud_username,
             "icloud_web_url": b.icloud_web_url,
             "immich_url": b.immich_url,
+            "favorites_follow_file": b.favorites_follow_file,
         }
 
     def _secrets(self) -> dict:
@@ -97,6 +98,7 @@ class SettingsManager:
             icloud_username=s["icloud_username"],
             icloud_web_url=s["icloud_web_url"],
             immich_url=s["immich_url"],
+            favorites_follow_file=bool(s["favorites_follow_file"]),
             **self._secrets(),
         )
 
@@ -177,6 +179,8 @@ class SettingsManager:
                 if version not in ("original", "adjusted", "both"):
                     raise SettingsError("de te downloaden versie moet original, adjusted of both zijn")
                 new["download_version"] = version
+            if "favorites_follow_file" in data:
+                new["favorites_follow_file"] = bool(data["favorites_follow_file"])
             if "delete_enabled" in data:
                 new["delete_enabled"] = bool(data["delete_enabled"])
             if "keep_days" in data:

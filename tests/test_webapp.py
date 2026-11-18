@@ -255,3 +255,11 @@ def test_icloud_test_runs_in_background_and_result_is_polled(web, monkeypatch):
         return not t["busy"] and t["result"] is not None
 
     assert wait_for(done)
+
+
+def test_follow_file_setting_defaults_on_and_can_be_switched_off(web):
+    base, store, scheduler, gate, calls = web
+    assert json.loads(call(base + "/api/settings")[1])["settings"]["favorites_follow_file"] is True
+    status, data = post_json(base + "/api/settings", {"favorites_follow_file": False})
+    assert status == 200 and data["settings"]["favorites_follow_file"] is False
+    assert scheduler.effective_config().favorites_follow_file is False

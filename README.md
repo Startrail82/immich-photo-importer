@@ -50,7 +50,10 @@ that lies under the target folder and has no sidecar yet, and (2) marks every Im
 rating 5 as favorite, once per asset (assets that were already judged are not touched again, so an
 un-favorited photo stays un-favorited). Move the photo together with its `.xmp`; after Immich has
 rescanned the new location, the next run restores the favorite. A favorite you set in Immich is
-written to its sidecar at the next run, so move the photo after that run.
+written to its sidecar at the next run, so move the photo after that run. If you remove the heart of a
+photo the tool already knows, the next run also sets the 5 stars in its `.xmp` to 0, so it does not come
+back as favorite after a move (a 5-star rating you gave on purpose without heart is cleared too). The
+whole mechanism can be switched off in Settings (or with `PI_FAVORITES_FOLLOW_FILE=false`).
 
 Safety: if the target folder does not exist (NAS not mounted) the run stops. Only one run at a
 time. In the inbox, recently modified files are skipped.

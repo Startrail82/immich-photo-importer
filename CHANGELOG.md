@@ -2,6 +2,15 @@
 
 Every commit bumps the version (minor for features, patch for fixes).
 
+## 0.9.0
+
+- Removing the heart in Immich now also clears the 5 stars in the `.xmp` (only an `xmp:Rating` of 5 is
+  set to 0, the rest of the sidecar is untouched), so the photo does not come back as favorite when
+  you move it later.
+- New setting "Favorieten laten meeverhuizen met het bestand" (Instellingen, Immich; env
+  `PI_FAVORITES_FOLLOW_FILE`, default on). Off = no sidecars written, no ratings converted to
+  favorites, nothing cleared; handy if Immich ever fixes this itself.
+
 ## 0.8.0
 
 - Favorites now follow the file when it is moved. Each run writes a rating-5 `.xmp` sidecar for every

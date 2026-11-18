@@ -324,3 +324,66 @@ def test_sidecar_outside_target_is_skipped(env, fake):
     fake.state.asset_info["o"] = {"originalPath": "/ergens/anders/IMG_1.jpg", "isFavorite": True}
     result = run_import(cfg, store)
     assert result.status == "ok" and result.stats.sidecars == 0
+
+
+# --- hartje weghalen en uitschakelen ----------------------------------------------
+
+
+def test_removing_the_heart_clears_the_rating_in_the_sidecar(env, fake):
+    cfg, store, dirs = env
+    cfg = immich_cfg(cfg, fake)
+    photo, immich_path = _put_photo(dirs)
+    fake.state.asset_info["a1"] = {"originalPath": immich_path, "isFavorite": True, "rating": 5}
+    run_import(cfg, store)  # sidecar met 5 sterren, asset gezien
+    sidecar = photo.with_name(photo.name + ".xmp")
+    assert 'xmp:Rating="5"' in sidecar.read_text()
+
+    fake.state.asset_info["a1"]["isFavorite"] = False  # gebruiker haalt het hartje weg
+    run_import(cfg, store)
+
+    assert 'xmp:Rating="0"' in sidecar.read_text()
+    # verplaatst = nieuwe asset; de sidecar zegt nu geen 5 sterren meer, dus geen favoriet
+    assert fake.state.favorite_calls == []
+
+
+def test_clear_rating_is_not_repeated_and_leaves_other_ratings_alone(env, fake):
+    cfg, store, dirs = env
+    cfg = immich_cfg(cfg, fake)
+    photo, immich_path = _put_photo(dirs)
+    sidecar = photo.with_name(photo.name + ".xmp")
+    sidecar.write_text('<x xmlns:xmp="ns"><xmp:Rating>3</xmp:Rating></x>')
+    fake.state.asset_info["a1"] = {"originalPath": immich_path, "isFavorite": False, "rating": 5}
+    store.add_fav_seen(["a1"])
+
+    run_import(cfg, store)
+
+    assert "<xmp:Rating>3</xmp:Rating>" in sidecar.read_text()  # was geen 5, dus onaangeroerd
+
+
+def test_clear_rating_handles_element_form_and_keeps_the_rest():
+    from photoimporter.sidecar import clear_rating
+    import tempfile
+    from pathlib import Path
+
+    with tempfile.TemporaryDirectory() as tmp:
+        photo = Path(tmp) / "IMG_9.jpg"
+        photo.write_bytes(b"x")
+        sc = photo.with_name("IMG_9.jpg.xmp")
+        sc.write_text('<rdf><dc:description>zomer</dc:description><xmp:Rating>5</xmp:Rating></rdf>')
+        assert clear_rating(photo) is True
+        assert sc.read_text() == '<rdf><dc:description>zomer</dc:description><xmp:Rating>0</xmp:Rating></rdf>'
+        assert clear_rating(photo) is False
+
+
+def test_follow_file_can_be_switched_off(env, fake):
+    cfg, store, dirs = env
+    cfg = immich_cfg(cfg, fake, favorites_follow_file=False)
+    photo, immich_path = _put_photo(dirs)
+    fake.state.asset_info["a1"] = {"originalPath": immich_path, "isFavorite": True}
+    fake.state.asset_info["new"] = {"originalPath": f"{IMMICH_ROOT}/Gesorteerd/IMG_2.jpg", "rating": 5}
+
+    result = run_import(cfg, store)
+
+    assert not photo.with_name(photo.name + ".xmp").exists()
+    assert fake.state.favorite_calls == []
+    assert result.stats.sidecars == 0 and result.stats.favorites_set == 0
