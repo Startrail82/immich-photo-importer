@@ -2,6 +2,16 @@
 
 Every commit bumps the version (minor for features, patch for fixes).
 
+## 0.8.0
+
+- Favorites now follow the file when it is moved. Each run writes a rating-5 `.xmp` sidecar for every
+  Immich favorite under the target folder (never overwriting an existing sidecar) and marks every
+  Immich asset with rating 5 as favorite, once per asset. Move the photo together with its `.xmp`.
+- New database table `fav_seen` remembers which Immich assets were already judged, so a photo you
+  un-favorite stays un-favorited. The first run after the update marks all existing rating-5 photos
+  that are not favorites yet.
+- The Immich step now also runs when there is nothing to move.
+
 ## 0.7.3
 
 - Overview: while a run is active, a "Naar huidige log" button opens the live log.

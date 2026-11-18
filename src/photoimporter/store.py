@@ -53,6 +53,10 @@ CREATE TABLE IF NOT EXISTS imported (
     source TEXT,
     created TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS fav_seen (
+    asset_id TEXT PRIMARY KEY,
+    ts TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS state (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL,
@@ -180,6 +184,18 @@ class Store:
             self._conn.execute(
                 "UPDATE pending_favorites SET done = 1, done_ts = ? WHERE path = ?",
                 (_now(), path),
+            )
+
+    # --- Immich-assets met rating 5 die al beoordeeld zijn --------------
+    def fav_seen_ids(self) -> set[str]:
+        with self._lock:
+            return {r["asset_id"] for r in self._conn.execute("SELECT asset_id FROM fav_seen")}
+
+    def add_fav_seen(self, ids: list[str]) -> None:
+        now = _now()
+        with self._lock:
+            self._conn.executemany(
+                "INSERT OR IGNORE INTO fav_seen (asset_id, ts) VALUES (?, ?)", [(i, now) for i in ids]
             )
 
     # --- losse toestandswaarden (bv. iCloud wacht op een code) ----------

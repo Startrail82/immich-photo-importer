@@ -12,6 +12,8 @@ class FakeImmichState:
         self.api_key = api_key
         self.libraries = [{"id": "lib-1", "name": "Ongesorteerd", "importPaths": import_paths or []}]
         self.assets: dict[str, str] = {}  # originalPath -> asset id
+        self.asset_info: dict[str, dict] = {}  # asset id -> {"originalPath", "isFavorite", "rating"}
+        self.page_size_cap = 1000
         self.hide_first_searches = 0  # zoekopdrachten die nog niets vinden (simuleert trage import)
         self.forced_status: dict[tuple[str, str], int] = {}  # (methode, pad) -> http-status
         self.search_calls = 0
@@ -56,8 +58,21 @@ class _Handler(BaseHTTPRequestHandler):
             st.scan_calls.append(path.split("/")[3])
             return self._send(204)
         if method == "POST" and path == "/api/search/metadata":
-            st.search_calls += 1
             wanted = (body or {}).get("originalPath")
+            if body and ("isFavorite" in body or "rating" in body):
+                hits = [
+                    {"id": i, "originalPath": a["originalPath"], "isFavorite": a.get("isFavorite", False)}
+                    for i, a in sorted(st.asset_info.items())
+                    if all(a.get(k) == v for k, v in body.items() if k in ("isFavorite", "rating"))
+                ]
+                cap = min(body.get("size", 1000), st.page_size_cap)
+                page = int(body.get("page", 1))
+                chunk = hits[(page - 1) * cap : page * cap]
+                more = str(page + 1) if page * cap < len(hits) else None
+                return self._send(
+                    200, {"assets": {"items": chunk, "total": len(hits), "count": len(chunk), "nextPage": more}}
+                )
+            st.search_calls += 1
             items = []
             if st.search_calls > st.hide_first_searches and wanted in st.assets:
                 items = [{"id": st.assets[wanted], "originalPath": wanted}]
@@ -67,6 +82,9 @@ class _Handler(BaseHTTPRequestHandler):
         if method == "PUT" and path == "/api/assets":
             assert body.get("isFavorite") is True
             st.favorite_calls.append(list(body["ids"]))
+            for i in body["ids"]:
+                if i in st.asset_info:
+                    st.asset_info[i]["isFavorite"] = True
             return self._send(204)
         return self._send(404, {"message": f"onbekend: {method} {path}"})
 

@@ -89,6 +89,17 @@ class ImmichClient:
                 return item["id"]
         return None
 
+    def iter_assets(self, filters: dict, size: int = 1000):
+        """Loopt over alle assets die aan de filters voldoen (bv. {"isFavorite": True})."""
+        page: int | None = 1
+        while page:
+            result = self._request("POST", "/search/metadata", {**filters, "page": page, "size": size})
+            assets = result.get("assets") if isinstance(result, dict) else None
+            assets = assets or {}
+            yield from assets.get("items") or []
+            nxt = assets.get("nextPage")
+            page = int(nxt) if nxt else None
+
     def set_favorite(self, asset_ids: list[str], chunk: int = 500) -> None:
         for start in range(0, len(asset_ids), chunk):
             self._request("PUT", "/assets", {"ids": asset_ids[start : start + chunk], "isFavorite": True})

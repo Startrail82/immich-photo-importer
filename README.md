@@ -43,6 +43,15 @@ favorites (searching on file path) and marks them as favorite through the API. F
 does not know yet stay queued for the next run. A photo that was marked once is not marked again;
 if you un-favorite it in Immich, it stays that way.
 
+Favorites that follow the file: Immich keeps a favorite only in its database, so a file you move
+inside an external library becomes a new asset and loses it. The star rating does survive in the
+sidecar. Every run therefore (1) writes a `<file>.xmp` with rating 5 for every favorite in Immich
+that lies under the target folder and has no sidecar yet, and (2) marks every Immich asset with
+rating 5 as favorite, once per asset (assets that were already judged are not touched again, so an
+un-favorited photo stays un-favorited). Move the photo together with its `.xmp`; after Immich has
+rescanned the new location, the next run restores the favorite. A favorite you set in Immich is
+written to its sidecar at the next run, so move the photo after that run.
+
 Safety: if the target folder does not exist (NAS not mounted) the run stops. Only one run at a
 time. In the inbox, recently modified files are skipped.
 

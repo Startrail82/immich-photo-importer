@@ -236,3 +236,91 @@ def test_check_immich_lists_missing_fields(env):
     cfg, _store, _dirs = env
     result = check_immich(cfg)
     assert result["ok"] is False and "URL" in result["steps"][0]["message"]
+
+
+# --- favoriet <-> sidecar met rating 5 ---------------------------------------------
+
+
+def _put_photo(dirs, name="IMG_1.jpg", day=(2024, 7, 8)):
+    y, m, d = day
+    folder = dirs["target"] / str(y) / f"{y}_{m:02d}" / f"{y}_{m:02d}_{d:02d}"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / name).write_bytes(b"jpeg")
+    return folder / name, immich_path_of(dirs, y, m, d, name)
+
+
+def test_favorite_in_immich_gets_rating_sidecar(env, fake):
+    cfg, store, dirs = env
+    cfg = immich_cfg(cfg, fake)
+    photo, immich_path = _put_photo(dirs)
+    fake.state.asset_info["a1"] = {"originalPath": immich_path, "isFavorite": True}
+
+    result = run_import(cfg, store)
+
+    sidecar = photo.with_name(photo.name + ".xmp")
+    assert sidecar.is_file() and 'xmp:Rating="5"' in sidecar.read_text()
+    assert result.stats.sidecars == 1
+
+
+def test_existing_sidecar_is_never_overwritten(env, fake):
+    cfg, store, dirs = env
+    cfg = immich_cfg(cfg, fake)
+    photo, immich_path = _put_photo(dirs)
+    sidecar = photo.with_name(photo.name + ".xmp")
+    sidecar.write_text("van iemand anders")
+    fake.state.asset_info["a1"] = {"originalPath": immich_path, "isFavorite": True}
+
+    run_import(cfg, store)
+
+    assert sidecar.read_text() == "van iemand anders"
+
+
+def test_moved_photo_with_rating_5_becomes_favorite_again(env, fake):
+    """Na het verplaatsen is het een nieuwe asset met rating 5 uit de sidecar, zonder favoriet."""
+    cfg, store, dirs = env
+    cfg = immich_cfg(cfg, fake)
+    fake.state.asset_info["new"] = {"originalPath": f"{IMMICH_ROOT}/Gesorteerd/IMG_1.jpg", "rating": 5}
+
+    result = run_import(cfg, store)
+
+    assert fake.state.favorite_calls == [["new"]]
+    assert result.stats.favorites_set == 1
+
+
+def test_rating_5_photo_is_judged_only_once(env, fake):
+    """Haal je hem daarna zelf van favoriet, dan blijft dat zo."""
+    cfg, store, dirs = env
+    cfg = immich_cfg(cfg, fake)
+    fake.state.asset_info["new"] = {"originalPath": f"{IMMICH_ROOT}/Gesorteerd/IMG_1.jpg", "rating": 5}
+    run_import(cfg, store)
+    fake.state.asset_info["new"]["isFavorite"] = False  # gebruiker haalt het hartje weg
+
+    run_import(cfg, store)
+
+    assert fake.state.favorite_calls == [["new"]]
+
+
+def test_already_favorite_rating_5_is_not_marked_again(env, fake):
+    cfg, store, dirs = env
+    cfg = immich_cfg(cfg, fake)
+    fake.state.asset_info["x"] = {"originalPath": f"{IMMICH_ROOT}/IMG_1.jpg", "rating": 5, "isFavorite": True}
+
+    run_import(cfg, store)
+
+    assert fake.state.favorite_calls == []
+
+
+def test_client_pages_through_all_assets(fake):
+    fake.state.page_size_cap = 2
+    for i in range(5):
+        fake.state.asset_info[f"a{i}"] = {"originalPath": f"{IMMICH_ROOT}/{i}.jpg", "rating": 5}
+    client = ImmichClient(fake.url, "geheim")
+    assert [a["id"] for a in client.iter_assets({"rating": 5})] == [f"a{i}" for i in range(5)]
+
+
+def test_sidecar_outside_target_is_skipped(env, fake):
+    cfg, store, dirs = env
+    cfg = immich_cfg(cfg, fake)
+    fake.state.asset_info["o"] = {"originalPath": "/ergens/anders/IMG_1.jpg", "isFavorite": True}
+    result = run_import(cfg, store)
+    assert result.status == "ok" and result.stats.sidecars == 0
