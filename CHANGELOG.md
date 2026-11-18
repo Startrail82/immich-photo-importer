@@ -2,6 +2,12 @@
 
 Every commit bumps the version (minor for features, patch for fixes).
 
+## 0.7.2
+
+- Log tab: "Alles selecteren" button selects the whole visible log, so it is easy to copy and share.
+- Files that are too recent to import (default 5 minutes unchanged) are no longer listed one by one;
+  the scan now logs one line per source with the count, the age limit and a few example names.
+
 ## 0.7.1
 
 - Settings tab: two balanced columns (max. 1300 px wide, centered) instead of a row of narrow

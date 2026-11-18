@@ -197,6 +197,7 @@ def collect_items(
             log.warn(step, f"bronmap '{name}' bestaat niet of is niet bereikbaar: {root}")
             continue
         found = 0
+        too_new: list[str] = []
         if name == "inbox" and not cfg.dry_run:
             for sub in _inbox_dirs(cfg):
                 try:
@@ -220,7 +221,7 @@ def collect_items(
                 age = now - max(st.st_mtime, st.st_ctime)
                 if age < min_age:
                     stats.skipped += 1
-                    log.info(step, f"nog in gebruik (te recent gewijzigd), volgende run: {path.name}", path)
+                    too_new.append(path.name)
                     continue
                 is_fav = favorite
                 if name == "inbox":
@@ -229,6 +230,13 @@ def collect_items(
                 items.append(Item(path, is_fav, name, kind == "video"))
                 found += 1
         log.info(step, f"bron '{name}': {found} bestand(en) gevonden in {root}")
+        if too_new:
+            voorbeeld = ", ".join(too_new[:3]) + (", ..." if len(too_new) > 3 else "")
+            log.info(
+                step,
+                f"bron '{name}': {len(too_new)} bestand(en) nog te recent gewijzigd "
+                f"(minder dan {min_age} s geleden), pas bij de volgende run: {voorbeeld}",
+            )
     stats.scanned = len(items)
     return items
 

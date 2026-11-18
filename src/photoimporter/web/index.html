@@ -147,6 +147,7 @@
     <h2>Log</h2>
     <div class="row">
       <select id="runSelect"></select>
+      <button id="selAll" type="button" class="ghost">Alles selecteren</button>
       <span class="meta" id="follow"></span>
     </div>
     <div id="log"></div>
@@ -329,6 +330,10 @@ function selectRun(id) {
   if (!$("tab-log").hidden) history.replaceState(null, "", "#log/" + id);
   polling = false; pollLog();
 }
+$("selAll").onclick = () => {
+  const r = document.createRange(); r.selectNodeContents($("log"));
+  const s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+};
 $("runSelect").onchange = (e) => { userPicked = true; selectRun(+e.target.value); };
 
 let polling = false;
