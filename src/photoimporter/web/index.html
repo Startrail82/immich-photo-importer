@@ -68,7 +68,9 @@
   nav a.active { background: var(--chip); color: var(--primary); }
   .panel { display: grid; gap: 20px; align-items: start; }
   /* brede schermen: kaarten naast elkaar, op een 13" of smaller automatisch minder kolommen */
-  #tab-settings { grid-template-columns: repeat(auto-fit, minmax(min(100%, 430px), 1fr)); }
+  #tab-settings { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 1300px; width: 100%; margin: 0 auto; }
+  .col { display: grid; gap: 20px; align-content: start; }
+  @media (max-width: 900px) { #tab-settings { grid-template-columns: minmax(0, 1fr); } }
   #tab-overview { grid-template-columns: repeat(auto-fit, minmax(min(100%, 520px), 1fr)); }
   .panel > .wide { grid-column: 1 / -1; }
   header { flex-wrap: wrap; }
@@ -152,6 +154,7 @@
   </div>
 
   <div class="panel" id="tab-settings" hidden>
+    <div class="col">
     <section class="card">
       <h2>Verbindingen</h2>
       <p class="hint" style="margin-top:0">Waarden die je hier opslaat, gaan v&oacute;or de omgevingsvariabelen in de stack. Wachtwoord en sleutel worden alleen bewaard en nooit meer getoond; laat een veld leeg om de bewaarde waarde te behouden.</p>
@@ -179,7 +182,19 @@
       <div id="testImOut"></div>
       <p class="hint">De tests gebruiken de waarden in dit formulier, ook als je ze nog niet hebt opgeslagen. Ze wijzigen niets.</p>
     </section>
-
+    <section class="card">
+      <h2>Wissen in iCloud</h2>
+      <label class="check"><input type="checkbox" id="sDelete"><span>Na het downloaden ook uit iCloud wissen
+        <small>Uit = alleen kopi&euml;ren; er wordt nooit iets in iCloud gewist.</small></span></label>
+      <div id="sDeleteBox" hidden>
+        <label class="field" for="sDays" style="margin-top:8px">Bewaar de laatste (dagen) in iCloud</label>
+        <input type="number" id="sDays" min="1" max="3650">
+        <p class="hint">Wat nieuwer is dan dit aantal dagen blijft in iCloud staan. Alles dat ouder is, wordt na het downloaden gewist. Favorieten worden eerst binnengehaald en gemarkeerd.</p>
+        <div class="warnbox"><b>Let op:</b> wissen in iCloud Foto's verwijdert de foto's ook van je iPhone en andere toestellen. Ze blijven 30 dagen in "Recent verwijderd". Zorg dat de NAS (Immich) een back-up heeft voor je dit aanzet.</div>
+      </div>
+    </section>
+    </div>
+    <div class="col">
     <section class="card">
       <h2>Planning</h2>
       <label class="check"><input type="checkbox" id="sEnabled"><span>Automatisch uitvoeren volgens de planning
@@ -190,7 +205,6 @@
       <div class="quick" id="quick"></div>
       <div class="explain" id="sExplain"></div>
     </section>
-
     <section class="card">
       <h2>iCloud-bibliotheken</h2>
       <p class="hint" style="margin-top:0">Vink aan welke bibliotheken gedownload worden. Alles komt in dezelfde datumstructuur; dubbele bestanden worden automatisch ontdubbeld.</p>
@@ -203,7 +217,6 @@
       <input type="text" id="sAlbum" autocomplete="off" placeholder="Favorites">
       <p class="hint">Exact zoals iCloud het noemt (bij een Engelstalig account: Favorites). Dit album wordt in elke aangevinkte bibliotheek gezocht.</p>
     </section>
-
     <section class="card">
       <h2>Bewerkte foto's</h2>
       <label class="field" for="sVersion">Welke versie wordt gedownload?</label>
@@ -215,18 +228,7 @@
       <p class="hint">Bewerkingen zoals kleur en uitsnede zitten in iCloud apart van het origineel. Met "Beide" krijgt de bewerkte versie <code>-adjusted</code> in de naam en staat de foto dubbel in Immich. Een foto die al eerder binnenkwam, wordt herkend en niet nog eens geplaatst.</p>
       <div class="warnbox" id="sVersionWarn" hidden><b>Let op:</b> bij "Bewerkte versie" komt het onbewerkte origineel niet op de NAS. Combineer dit niet met "Wissen in iCloud" als je het origineel ooit nog wil terughebben.</div>
     </section>
-
-    <section class="card">
-      <h2>Wissen in iCloud</h2>
-      <label class="check"><input type="checkbox" id="sDelete"><span>Na het downloaden ook uit iCloud wissen
-        <small>Uit = alleen kopi&euml;ren; er wordt nooit iets in iCloud gewist.</small></span></label>
-      <div id="sDeleteBox" hidden>
-        <label class="field" for="sDays" style="margin-top:8px">Bewaar de laatste (dagen) in iCloud</label>
-        <input type="number" id="sDays" min="1" max="3650">
-        <p class="hint">Wat nieuwer is dan dit aantal dagen blijft in iCloud staan. Alles dat ouder is, wordt na het downloaden gewist. Favorieten worden eerst binnengehaald en gemarkeerd.</p>
-        <div class="warnbox"><b>Let op:</b> wissen in iCloud Foto's verwijdert de foto's ook van je iPhone en andere toestellen. Ze blijven 30 dagen in "Recent verwijderd". Zorg dat de NAS (Immich) een back-up heeft voor je dit aanzet.</div>
-      </div>
-    </section>
+    </div>
 
     <div class="savebar wide">
       <button id="saveBtn">Opslaan</button>

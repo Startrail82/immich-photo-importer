@@ -2,6 +2,11 @@
 
 Every commit bumps the version (minor for features, patch for fixes).
 
+## 0.7.1
+
+- Settings tab: two balanced columns (max. 1300 px wide, centered) instead of a row of narrow
+  cards; one column below 900 px.
+
 ## 0.7.0
 
 - Web UI: the log and the list of earlier runs now have their own tabs (**Runs** and **Log**).
