@@ -9,7 +9,7 @@ from typing import Callable
 from .config import Config
 from .immich import ImmichClient, ImmichError
 from .runlog import RunLog
-from .sidecar import clear_rating, sidecar_path, write_rating_sidecar
+from .sidecar import clear_rating, ensure_rating
 from .store import Store
 
 STEP = "6/6 Immich"  # standaardnaam van de stap in een volledige run
@@ -77,27 +77,38 @@ def _sync_rating_markers(cfg, store, log, stats, client, step) -> None:
     Immich bewaart een favoriet enkel in zijn database; verplaats je een bestand, dan is het voor
     Immich een nieuwe foto en is de favoriet weg. Het sterrenrating staat wel in de sidecar
     (<bestand>.xmp) die mee verhuist. Daarom:
-    1. elke favoriet in Immich krijgt een sidecar met rating 5 (als er nog geen sidecar is);
+    1. elke favoriet in Immich krijgt rating 5 in zijn sidecar: een nieuwe <bestand>.xmp, of in een bestaande
+       sidecar (bv. van Lightroom) enkel het ratingveld als dat leeg of 0 is; een eigen rating 1-4 blijft staan;
     2. elke foto met rating 5 die we nog niet eerder gezien hebben en geen favoriet is, wordt favoriet.
     3. haal je een foto die we al kenden van favoriet, dan zetten we ook de 5 sterren in de sidecar op 0,
        anders komt hij terug als favoriet zodra je hem verplaatst (dan is het een nieuwe asset).
     Een foto die je zelf van favoriet haalt, blijft dat: we kijken per Immich-asset maar een keer.
     """
-    written = 0
+    written = 0  # nieuwe sidecars
+    updated = 0  # bestaande sidecars (bv. van Lightroom) waar enkel rating 5 bijgezet is
+    kept = 0  # sidecars met een eigen rating van 1 tot 4: blijven ongemoeid
+    skipped = 0  # sidecars die we niet veilig kunnen aanpassen
     failed = 0
     for item in client.iter_assets({"isFavorite": True}):
         host = from_immich_path(cfg, item.get("originalPath") or "")
         if host is None or not host.is_file():
             continue
-        if sidecar_path(host).exists() or host.with_suffix(".xmp").exists():
-            continue
         try:
-            if write_rating_sidecar(host, 5):
-                written += 1
+            status = ensure_rating(host, 5)
         except OSError as exc:
             failed += 1
             log.warn(step, f"sidecar schrijven mislukt voor {host.name}: {exc}", host)
-    stats.sidecars += written
+            continue
+        if status == "created":
+            written += 1
+        elif status == "updated":
+            updated += 1
+            log.info(step, f"rating 5 bijgezet in de bestaande sidecar van {host.name}", host)
+        elif status == "kept":
+            kept += 1
+        elif status == "skipped":
+            skipped += 1
+    stats.sidecars += written + updated
 
     seen = store.fav_seen_ids()
     new_ids: list[str] = []
@@ -128,8 +139,10 @@ def _sync_rating_markers(cfg, store, log, stats, client, step) -> None:
     store.add_fav_seen(new_ids)
     log.info(
         step,
-        f"favorieten en sidecars: {written} sidecar(s) geschreven voor favorieten in Immich"
+        f"favorieten en sidecars: {written} sidecar(s) geschreven en {updated} bijgewerkt voor favorieten in Immich"
         + (f" ({failed} mislukt)" if failed else "")
+        + (f", {kept} met een eigen rating van 1 tot 4 ongemoeid gelaten" if kept else "")
+        + (f", {skipped} niet aangepast (onleesbaar)" if skipped else "")
         + f", {len(to_mark)} foto(s) met rating 5 als favoriet gemarkeerd"
         + (f", {cleared} sidecar(s) op 0 sterren gezet omdat het hartje weg is" if cleared else ""),
     )

@@ -111,8 +111,8 @@ def test_photos_of_a_shared_library_are_sorted_and_favorites_marked(icloud):
     result = run_import(cfg, store)
 
     assert result.status == "ok"
-    assert (dirs["target"] / "2025/2025_03/2025_03_04/IMG_G1.jpg.xmp").exists()
-    assert not (dirs["target"] / "2025/2025_03/2025_03_05/IMG_G2.jpg.xmp").exists()
+    assert (dirs["target"] / "2025/2025_03/2025_03_04/IMG_G1.xmp").exists()
+    assert not (dirs["target"] / "2025/2025_03/2025_03_05/IMG_G2.xmp").exists()
 
 
 def test_keep_days_only_applies_to_the_all_photos_download(icloud):
@@ -233,9 +233,9 @@ def test_download_then_sort_favorite_and_other(icloud):
     assert result.status == "ok"
     assert result.stats.downloaded == 2
     assert (dirs["target"] / "2024" / "2024_07" / "2024_07_08" / "IMG_1.jpg").exists()
-    assert (dirs["target"] / "2024" / "2024_07" / "2024_07_08" / "IMG_1.jpg.xmp").exists()
+    assert (dirs["target"] / "2024" / "2024_07" / "2024_07_08" / "IMG_1.xmp").exists()
     assert (dirs["target"] / "2023" / "2023_01" / "2023_01_02" / "IMG_2.jpg").exists()
-    assert not (dirs["target"] / "2023" / "2023_01" / "2023_01_02" / "IMG_2.jpg.xmp").exists()
+    assert not (dirs["target"] / "2023" / "2023_01" / "2023_01_02" / "IMG_2.xmp").exists()
     assert store.get_state("icloud_status") == "ok"
 
 
@@ -256,7 +256,7 @@ def test_favorite_also_in_all_photos_stays_favorite(icloud):
     result = run_import(cfg, store)
 
     day = dirs["target"] / "2024" / "2024_07" / "2024_07_08"
-    assert sorted(p.name for p in day.iterdir()) == ["IMG_1.jpg", "IMG_1.jpg.xmp"]
+    assert sorted(p.name for p in day.iterdir()) == ["IMG_1.jpg", "IMG_1.xmp"]
     assert result.stats.duplicates_removed == 1
     assert len(store.list_pending_favorites()) == 1
 
@@ -356,7 +356,7 @@ def test_second_run_downloads_nothing_new_and_is_stable(icloud):
     # het wordt opnieuw gedownload (icloudpd ziet het niet meer in de downloadmap), maar herkend
     # als identiek duplicaat en verwijderd: er blijft precies een foto met sidecar over
     day = dirs["target"] / "2024" / "2024_07" / "2024_07_08"
-    assert sorted(p.name for p in day.iterdir()) == ["IMG_1.jpg", "IMG_1.jpg.xmp"]
+    assert sorted(p.name for p in day.iterdir()) == ["IMG_1.jpg", "IMG_1.xmp"]
     assert second.stats.duplicates_removed == 1
     assert second.status == "ok"
 

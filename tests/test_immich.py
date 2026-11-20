@@ -257,7 +257,7 @@ def test_favorite_in_immich_gets_rating_sidecar(env, fake):
 
     result = run_import(cfg, store)
 
-    sidecar = photo.with_name(photo.name + ".xmp")
+    sidecar = photo.with_suffix(".xmp")  # naam zoals Lightroom: IMG_1.xmp
     assert sidecar.is_file() and 'xmp:Rating="5"' in sidecar.read_text()
     assert result.stats.sidecars == 1
 
@@ -267,7 +267,7 @@ def test_existing_sidecar_is_never_overwritten(env, fake):
     cfg = immich_cfg(cfg, fake)
     photo, immich_path = _put_photo(dirs)
     sidecar = photo.with_name(photo.name + ".xmp")
-    sidecar.write_text("van iemand anders")
+    sidecar.write_text("van iemand anders")  # geen rdf:Description: niet veilig aan te passen
     fake.state.asset_info["a1"] = {"originalPath": immich_path, "isFavorite": True}
 
     run_import(cfg, store)
@@ -335,7 +335,7 @@ def test_removing_the_heart_clears_the_rating_in_the_sidecar(env, fake):
     photo, immich_path = _put_photo(dirs)
     fake.state.asset_info["a1"] = {"originalPath": immich_path, "isFavorite": True, "rating": 5}
     run_import(cfg, store)  # sidecar met 5 sterren, asset gezien
-    sidecar = photo.with_name(photo.name + ".xmp")
+    sidecar = photo.with_suffix(".xmp")
     assert 'xmp:Rating="5"' in sidecar.read_text()
 
     fake.state.asset_info["a1"]["isFavorite"] = False  # gebruiker haalt het hartje weg
@@ -350,7 +350,7 @@ def test_clear_rating_is_not_repeated_and_leaves_other_ratings_alone(env, fake):
     cfg, store, dirs = env
     cfg = immich_cfg(cfg, fake)
     photo, immich_path = _put_photo(dirs)
-    sidecar = photo.with_name(photo.name + ".xmp")
+    sidecar = photo.with_suffix(".xmp")
     sidecar.write_text('<x xmlns:xmp="ns"><xmp:Rating>3</xmp:Rating></x>')
     fake.state.asset_info["a1"] = {"originalPath": immich_path, "isFavorite": False, "rating": 5}
     store.add_fav_seen(["a1"])
@@ -405,6 +405,92 @@ def test_favorites_only_run_syncs_immich_but_does_not_sort_or_download(env, fake
 
     result = run_favorites_sync(cfg, store)
 
-    assert photo.with_name(photo.name + ".xmp").is_file()  # sidecar voor de favoriet
+    assert photo.with_suffix(".xmp").is_file()  # sidecar voor de favoriet
     assert loose.exists()  # niet gesorteerd
     assert result.stats.moved == 0 and result.stats.downloaded == 0
+
+
+LIGHTROOM_XMP = """<?xpacket begin="" id="W5M0MpCehiHzreSzNTczkc9d"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about="" xmlns:crs="http://ns.adobe.com/camera-raw-settings/1.0/" crs:Exposure2012="+0.50"{extra}>
+  </rdf:Description>
+ </rdf:RDF>
+</x:xmpmeta>
+"""
+
+
+def test_lightroom_sidecar_gets_rating_5_and_keeps_everything_else(env, fake):
+    cfg, store, dirs = env
+    cfg = immich_cfg(cfg, fake)
+    photo, immich_path = _put_photo(dirs, name="IMG_7.HEIC")
+    sidecar = photo.with_suffix(".xmp")
+    sidecar.write_text(LIGHTROOM_XMP.format(extra=""))
+    fake.state.asset_info["a1"] = {"originalPath": immich_path, "isFavorite": True}
+
+    result = run_import(cfg, store)
+
+    text = sidecar.read_text()
+    assert 'xmp:Rating="5"' in text and 'xmlns:xmp="http://ns.adobe.com/xap/1.0/"' in text
+    assert 'crs:Exposure2012="+0.50"' in text  # de bewerking van Lightroom blijft staan
+    assert not photo.with_name(photo.name + ".xmp").exists()  # geen tweede sidecar ernaast
+    assert result.stats.sidecars == 1
+    run_import(cfg, store)
+    assert sidecar.read_text() == text  # tweede run verandert niets meer
+
+
+def test_lightroom_sidecar_with_rating_zero_is_raised_to_5(env, fake):
+    cfg, store, dirs = env
+    cfg = immich_cfg(cfg, fake)
+    photo, immich_path = _put_photo(dirs)
+    sidecar = photo.with_suffix(".xmp")
+    sidecar.write_text(LIGHTROOM_XMP.format(extra=' xmlns:xmp="http://ns.adobe.com/xap/1.0/" xmp:Rating="0"'))
+    fake.state.asset_info["a1"] = {"originalPath": immich_path, "isFavorite": True}
+
+    run_import(cfg, store)
+
+    assert 'xmp:Rating="5"' in sidecar.read_text() and 'xmp:Rating="0"' not in sidecar.read_text()
+
+
+def test_own_rating_1_to_4_in_a_lightroom_sidecar_is_left_alone(env, fake):
+    cfg, store, dirs = env
+    cfg = immich_cfg(cfg, fake)
+    photo, immich_path = _put_photo(dirs)
+    sidecar = photo.with_suffix(".xmp")
+    content = LIGHTROOM_XMP.format(extra=' xmlns:xmp="http://ns.adobe.com/xap/1.0/" xmp:Rating="3"')
+    sidecar.write_text(content)
+    fake.state.asset_info["a1"] = {"originalPath": immich_path, "isFavorite": True}
+
+    result = run_import(cfg, store)
+
+    assert sidecar.read_text() == content
+    assert result.stats.sidecars == 0
+
+
+def test_removing_the_heart_also_clears_a_lightroom_named_sidecar(env, fake):
+    cfg, store, dirs = env
+    cfg = immich_cfg(cfg, fake)
+    photo, immich_path = _put_photo(dirs, name="IMG_8.HEIC")
+    fake.state.asset_info["a1"] = {"originalPath": immich_path, "isFavorite": True, "rating": 5}
+    run_import(cfg, store)
+    sidecar = photo.with_suffix(".xmp")
+    assert 'xmp:Rating="5"' in sidecar.read_text()
+
+    fake.state.asset_info["a1"]["isFavorite"] = False
+    run_import(cfg, store)
+
+    assert 'xmp:Rating="0"' in sidecar.read_text()
+
+
+def test_shared_stem_sidecar_survives_when_one_of_two_files_is_removed(tmp_path):
+    from photoimporter.sidecar import removable_sidecars
+
+    heic, jpg = tmp_path / "IMG_9.HEIC", tmp_path / "IMG_9.JPG"
+    heic.write_bytes(b"x")
+    jpg.write_bytes(b"x")
+    (tmp_path / "IMG_9.xmp").write_text("x")
+    (tmp_path / "IMG_9.JPG.xmp").write_text("x")
+
+    assert [p.name for p in removable_sidecars(jpg)] == ["IMG_9.JPG.xmp"]  # IMG_9.xmp hoort ook bij de HEIC
+    heic.unlink()
+    assert sorted(p.name for p in removable_sidecars(jpg)) == ["IMG_9.JPG.xmp", "IMG_9.xmp"]

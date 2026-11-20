@@ -2,6 +2,18 @@
 
 Every commit bumps the version (minor for features, patch for fixes).
 
+## 0.10.0
+
+- Works with Lightroom Classic. New sidecars are now named `<file>.xmp` (e.g. `IMG_1234.xmp`), the name
+  Lightroom uses, so Lightroom moves them along when you sort in its Folders panel. Immich reads this
+  name too. Existing `<file>.<ext>.xmp` sidecars keep working.
+- A favorite whose photo already has a sidecar (for example one written by Lightroom) no longer
+  blocks the 5 stars: only the `xmp:Rating` field is set to 5 when it is missing or 0, everything else
+  in the file stays untouched. An own rating of 1 to 4 is never overwritten (the favorite then does
+  not survive a move). Files we cannot safely edit are skipped.
+- `find-duplicates` knows both sidecar names and keeps `<file>.xmp` while another file with the same
+  name (e.g. IMG_1.HEIC next to IMG_1.JPG) still uses it.
+
 ## 0.9.1
 
 - Two separate schedules. The iCloud run (download, sort, Immich) keeps its cron; a new favorites sync

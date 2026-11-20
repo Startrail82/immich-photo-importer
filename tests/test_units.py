@@ -8,7 +8,7 @@ import pytest
 from photoimporter.config import Config, ConfigError
 from photoimporter.media import classify
 from photoimporter.metadata import parse_exif_datetime
-from photoimporter.sidecar import sidecar_path, write_rating_sidecar
+from photoimporter.sidecar import ensure_rating, sidecar_path, stem_sidecar_path
 
 
 def test_parse_valid_exif_date():
@@ -47,9 +47,10 @@ def test_sidecar_name_and_idempotence(tmp_path):
     media = tmp_path / "IMG_1.jpg"
     media.write_bytes(b"x")
     assert sidecar_path(media).name == "IMG_1.jpg.xmp"
-    assert write_rating_sidecar(media) is True
-    assert write_rating_sidecar(media) is False  # bestaande sidecar blijft ongemoeid
-    assert 'xmp:Rating="5"' in sidecar_path(media).read_text()
+    assert stem_sidecar_path(media).name == "IMG_1.xmp"
+    assert ensure_rating(media) == "created"
+    assert ensure_rating(media) == "unchanged"  # staat al op 5
+    assert 'xmp:Rating="5"' in stem_sidecar_path(media).read_text()
 
 
 def test_config_rejects_nested_directories(tmp_path):

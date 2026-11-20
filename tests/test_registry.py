@@ -12,7 +12,7 @@ from test_icloud import icloud  # noqa: F401  (fixture)
 from photoimporter.dedupe import find_duplicates, run_find_duplicates
 from photoimporter.organizer import run_import
 from photoimporter.scheduler import Scheduler
-from photoimporter.sidecar import sidecar_path
+from photoimporter.sidecar import stem_sidecar_path as sidecar_path
 
 
 def day(dirs, y, m, d):

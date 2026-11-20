@@ -53,6 +53,7 @@ rescanned the new location, the next run restores the favorite. A favorite you s
 written to its sidecar at the next run, so move the photo after that run. If you remove the heart of a
 photo the tool already knows, the next run also sets the 5 stars in its `.xmp` to 0, so it does not come
 back as favorite after a move (a 5-star rating you gave on purpose without heart is cleared too). The
+new sidecars are named `<file>.xmp` like Lightroom's, and a sidecar that is already there (e.g. from Lightroom) only gets `xmp:Rating` 5 added when it has no rating or 0 (an own rating of 1-4 is left alone). The
 favorites sync has its own schedule (default hourly 07:00-23:00, `PI_FAVORITES_CRON`) that runs only the
 Immich step, independent of the iCloud schedule. The whole mechanism can be switched off in Settings (or with `PI_FAVORITES_FOLLOW_FILE=false`).
 

@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .media import classify
+from .sidecar import existing_sidecars, removable_sidecars
 
 _COPY = re.compile(r"(_\d{1,2}|-[A-Za-z]+(-\d+)?|-\d{5,})$")  # _1, _2, -adjusted, -1650727
 _BATCH = 200
@@ -49,8 +50,10 @@ def _clean_rank(path: Path) -> int:
     return 1 if _COPY.search(path.stem) else 0
 
 
-def sidecar_of(path: Path) -> Path:
-    return path.with_name(path.name + ".xmp")
+def sidecar_of(path: Path) -> Path | None:
+    """De sidecar die bij dit bestand hoort (<bestand>.<ext>.xmp of <bestand>.xmp), of None."""
+    found = existing_sidecars(path)
+    return found[0] if found else None
 
 
 @dataclass
@@ -82,7 +85,7 @@ def find_duplicates(root: Path, log=print) -> list[Group]:
             continue
         ranked = sorted(
             paths,
-            key=lambda p: (not sidecar_of(p).exists(), _clean_rank(p), p.stat().st_mtime, p.name),
+            key=lambda p: (sidecar_of(p) is None, _clean_rank(p), p.stat().st_mtime, p.name),
         )
         groups.append(Group(keep=ranked[0], remove=ranked[1:]))
     return sorted(groups, key=lambda g: str(g.keep))
@@ -97,7 +100,7 @@ def run_find_duplicates(root: Path, apply: bool, log=print) -> int:
     for group in groups:
         log(f"BEWAREN  {group.keep}")
         for path in group.remove:
-            extra = " (+ .xmp)" if sidecar_of(path).exists() else ""
+            extra = " (+ .xmp)" if removable_sidecars(path) else ""
             log(f"  WISSEN {path}{extra}")
     log(f"{len(groups)} groepen, {total} bestanden zouden gewist worden")
     if not apply:
@@ -106,8 +109,7 @@ def run_find_duplicates(root: Path, apply: bool, log=print) -> int:
     for group in groups:
         for path in group.remove:
             path.unlink()
-            side = sidecar_of(path)
-            if side.exists():
+            for side in removable_sidecars(path):
                 side.unlink()
     log(f"{total} duplicaten gewist. Start in Immich een scan van de bibliotheek.")
     return 0

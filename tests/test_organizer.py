@@ -5,7 +5,7 @@ from datetime import datetime
 from conftest import make_jpeg, needs_exiftool, set_mtime
 
 from photoimporter.organizer import RunAlreadyActive, run_import, run_lock
-from photoimporter.sidecar import sidecar_path
+from photoimporter.sidecar import stem_sidecar_path as sidecar_path
 
 import pytest
 

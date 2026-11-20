@@ -19,7 +19,7 @@ from .immich_sync import sync_immich
 from .media import classify
 from .metadata import file_date, read_exif_dates
 from .runlog import RunLog
-from .sidecar import write_rating_sidecar
+from .sidecar import ensure_rating
 from .store import Store
 
 
@@ -389,9 +389,12 @@ def _favorite_tail(item, dest, prefix, cfg, store, log, stats) -> None:
     if cfg.dry_run:
         log.info(prefix, f"sidecar met rating 5 zou geschreven worden voor {dest.name}", item.path)
         return
-    if write_rating_sidecar(dest):
+    status = ensure_rating(dest)
+    if status in ("created", "updated"):
         stats.sidecars += 1
-        log.info(prefix, f"sidecar met rating 5 geschreven voor {dest.name}", dest)
+        log.info(prefix, f"sidecar met rating 5 {'geschreven' if status == 'created' else 'bijgewerkt'} voor {dest.name}", dest)
+    elif status == "kept":
+        log.warn(prefix, f"{dest.name}: sidecar heeft een eigen rating van 1 tot 4, die laten we staan", dest)
     store.add_pending_favorite(str(dest))
 
 
